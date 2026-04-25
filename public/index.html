@@ -3,9 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSV Upload & Summary</title>
+  <title>CSV Upload & Summary App</title>
   <style>
-    :root { --primary: #4a90e2; --bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); --card: #fff; --text: #333; --border: #ddd; }
+    :root { 
+      --primary: #4a90e2; 
+      --bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); 
+      --card: #fff; 
+      --text: #333; 
+      --border: #ddd; 
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
     body { background: var(--bg); min-height: 100vh; padding: 2rem; color: var(--text); }
     .container { max-width: 1100px; margin: 0 auto; }
@@ -48,6 +54,18 @@
     .detail-section h3 { margin-bottom: 0.5rem; color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 0.3rem; }
     .list-item { padding: 0.4rem 0; border-bottom: 1px dashed #eee; }
     .list-item strong { display: inline-block; width: 120px; color: #555; }
+    
+    /* Comparison Section */
+    .comparison-section { margin-top: 2rem; padding: 1.5rem; background: #fff; border: 1px solid #ddd; border-radius: 8px; }
+    .comparison-header { display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1rem; flex-wrap: wrap; }
+    .comparison-result { margin-top: 1rem; }
+    .missing-list { max-height: 300px; overflow-y: auto; padding: 0.5rem; }
+    .date-group { margin-bottom: 1.5rem; border-bottom: 1px solid #eee; padding-bottom: 1rem; }
+    .date-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .date-title { font-weight: bold; color: #0056b3; font-size: 1.05rem; margin-bottom: 0.3rem; }
+    .date-meta { font-size: 0.9rem; color: #444; margin-bottom: 0.5rem; font-weight: 500; }
+    .missing-ids { background: #fff3f3; padding: 0.6rem; border-radius: 4px; border: 1px solid #ffcdd2; font-size: 0.9rem; word-break: break-all; }
+    .no-missing { color: #28a745; font-style: italic; font-weight: 500; }
     
     /* Modal Actions */
     .modal-actions { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #ddd; text-align: center; }
@@ -93,30 +111,20 @@
       <button class="close-modal" id="close-modal">&times;</button>
       <h2>Detailed Breakdown</h2>
       
-      <!-- Filter Section with Year/Month/Date Checkboxes -->
+      <!-- Filter Section -->
       <div class="filter-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
           <h3 style="margin: 0;">Filter by Date</h3>
-          <button id="toggle-all-btn" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
-            Deselect All
-          </button>
+          <button id="toggle-all-btn" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Deselect All</button>
         </div>
         <div class="year-month-filter">
-          <div class="filter-column">
-            <h4>Years</h4>
-            <div id="year-filters"></div>
-          </div>
-          <div class="filter-column">
-            <h4>Months</h4>
-            <div id="month-filters"></div>
-          </div>
-          <div class="filter-column" style="flex: 2; min-width: 200px;">
-            <h4>Dates</h4>
-            <div id="date-filters" class="date-list"></div>
-          </div>
+          <div class="filter-column"><h4>Years</h4><div id="year-filters"></div></div>
+          <div class="filter-column"><h4>Months</h4><div id="month-filters"></div></div>
+          <div class="filter-column" style="flex: 2; min-width: 200px;"><h4>Dates</h4><div id="date-filters" class="date-list"></div></div>
         </div>
       </div>
       
+      <!-- Summary Table -->
       <div id="modal-summary-table">
         <table>
           <thead><tr><th>Date</th><th>Total Files</th><th>Uploaded</th><th>Not Uploaded</th><th>Unique Police ID Count</th><th>Unique Device SN Count</th></tr></thead>
@@ -127,14 +135,29 @@
       <div class="detail-section"><h3>Unique Police IDs</h3><div id="police-list"></div></div>
       <div class="detail-section"><h3>Unique Device SNs</h3><div id="device-list"></div></div>
       
-      <!-- Download Button in Modal -->
+      <!-- Comparison Section -->
+      <div class="comparison-section">
+        <h3>🔍 Compare with Reference User List</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">Upload an Excel file containing <strong>"User ID"</strong> to find missing Police IDs per selected date.</p>
+        <div class="comparison-header">
+          <input type="file" id="ref-file-input" accept=".xlsx, .xls" style="padding: 0.5rem;">
+          <button id="compare-btn" class="btn btn-primary">Compare</button>
+        </div>
+        <div id="comparison-result" class="comparison-result hidden">
+          <h4>Missing Police IDs (Per Selected Date):</h4>
+          <div id="missing-ids-list" class="missing-list"></div>
+        </div>
+      </div>
+
+      <!-- Download Button -->
       <div class="modal-actions">
-        <button id="modal-download-btn" class="btn btn-primary">Download Report (CSV)</button>
+        <button id="modal-download-btn" class="btn btn-primary">Download Report (Excel)</button>
       </div>
     </div>
   </div>
 
   <script>
+    // DOM Elements
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const uploadBtn = document.getElementById('upload-btn');
@@ -153,33 +176,32 @@
     const deviceList = document.getElementById('device-list');
     const modalDownloadBtn = document.getElementById('modal-download-btn');
     const toggleAllBtn = document.getElementById('toggle-all-btn');
+    const refFileInput = document.getElementById('ref-file-input');
+    const compareBtn = document.getElementById('compare-btn');
+    const comparisonResult = document.getElementById('comparison-result');
+    const missingIdsList = document.getElementById('missing-ids-list');
 
+    // State
     let currentSummary = [];
     let selectedDates = new Set();
     let availableYears = new Set();
     let availableMonths = new Set();
     let allSelected = true;
 
-    const monthNames = ["January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
-    ];
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-    // Drag & Drop Handlers
+    // Drag & Drop
     dropZone.addEventListener('click', () => fileInput.click());
-    ['dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); }));
+    ['dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, e => e.preventDefault()));
     dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     dropZone.addEventListener('drop', e => {
       dropZone.classList.remove('dragover');
       if (e.dataTransfer.files.length) handleFileSelect(e.dataTransfer.files[0]);
     });
-
-    fileInput.addEventListener('change', () => {
-      if (fileInput.files.length) handleFileSelect(fileInput.files[0]);
-    });
+    fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFileSelect(fileInput.files[0]); });
 
     function handleFileSelect(file) {
-      fileInput.files = new DataTransfer().files;
       const dt = new DataTransfer();
       dt.items.add(file);
       fileInput.files = dt.files;
@@ -207,6 +229,8 @@
         summarySection.classList.remove('hidden');
         initializeDateFilters();
         fileInput.value = '';
+        comparisonResult.classList.add('hidden');
+        refFileInput.value = '';
       } catch (err) {
         statusDiv.className = 'msg error'; statusDiv.textContent = `Error: ${err.message}`;
       } finally { uploadBtn.disabled = false; }
@@ -223,22 +247,15 @@
     }
 
     function initializeDateFilters() {
-      availableYears.clear();
-      availableMonths.clear();
-      selectedDates.clear();
-      
+      availableYears.clear(); availableMonths.clear(); selectedDates.clear();
       currentSummary.forEach(s => {
         const dateObj = new Date(s.date);
-        const year = dateObj.getFullYear();
-        const month = dateObj.getMonth();
-        availableYears.add(year);
-        availableMonths.add(`${year}-${month}`);
+        availableYears.add(dateObj.getFullYear());
+        availableMonths.add(`${dateObj.getFullYear()}-${dateObj.getMonth()}`);
         selectedDates.add(s.date);
       });
-      
       allSelected = true;
       toggleAllBtn.textContent = 'Deselect All';
-      
       renderYearMonthFilters();
       renderDateFilters();
       updateModalView();
@@ -246,171 +263,69 @@
 
     function renderYearMonthFilters() {
       yearFiltersDiv.innerHTML = '';
-      const years = Array.from(availableYears).sort();
-      years.forEach(year => {
-        const label = createCheckboxItem(`year-${year}`, year, 'year');
-        yearFiltersDiv.appendChild(label);
-      });
-      
+      Array.from(availableYears).sort().forEach(year => yearFiltersDiv.appendChild(createCheckboxItem(`year-${year}`, year, 'year')));
       monthFiltersDiv.innerHTML = '';
-      const months = Array.from(availableMonths).sort();
-      months.forEach(yearMonth => {
-        const [year, monthIdx] = yearMonth.split('-').map(Number);
-        const monthName = monthNames[monthIdx];
-        const label = createCheckboxItem(`month-${yearMonth}`, `${monthName} ${year}`, 'month');
-        monthFiltersDiv.appendChild(label);
+      Array.from(availableMonths).sort().forEach(ym => {
+        const [y, m] = ym.split('-').map(Number);
+        monthFiltersDiv.appendChild(createCheckboxItem(`month-${ym}`, `${monthNames[m]} ${y}`, 'month'));
       });
     }
 
     function renderDateFilters() {
       dateFiltersDiv.innerHTML = '';
-      const dates = currentSummary.map(s => s.date).sort();
-      dates.forEach(date => {
-        const label = createCheckboxItem(`date-${date}`, date, 'date');
-        dateFiltersDiv.appendChild(label);
-      });
+      currentSummary.map(s => s.date).sort().forEach(date => dateFiltersDiv.appendChild(createCheckboxItem(`date-${date}`, date, 'date')));
     }
 
-    function createCheckboxItem(id, labelText, type) {
-      const div = document.createElement('div');
-      div.className = 'checkbox-item';
-      
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.id = id;
-      checkbox.checked = true;
-      checkbox.dataset.type = type;
-      
-      checkbox.addEventListener('change', handleDateFilterChange);
-      
-      const label = document.createElement('label');
-      label.htmlFor = id;
-      label.textContent = labelText;
-      
-      div.appendChild(checkbox);
-      div.appendChild(label);
-      
+    function createCheckboxItem(id, text, type) {
+      const div = document.createElement('div'); div.className = 'checkbox-item';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = id; cb.checked = true; cb.dataset.type = type;
+      cb.addEventListener('change', handleDateFilterChange);
+      const lbl = document.createElement('label'); lbl.htmlFor = id; lbl.textContent = text;
+      div.appendChild(cb); div.appendChild(lbl);
       return div;
     }
 
     function handleDateFilterChange(e) {
-      const checkbox = e.target;
-      const type = checkbox.dataset.type;
-      const isChecked = checkbox.checked;
-      
+      const cb = e.target;
+      const type = cb.dataset.type;
+      const checked = cb.checked;
+
       if (type === 'year') {
-        const year = checkbox.id.replace('year-', '');
-        toggleDatesByYear(year, isChecked);
-        const monthCheckboxes = monthFiltersDiv.querySelectorAll('input[type="checkbox"]');
-        monthCheckboxes.forEach(cb => {
-          const monthYear = cb.id.replace('month-', '');
-          const [mYear] = monthYear.split('-');
-          if (mYear === year) {
-            cb.checked = isChecked;
-          }
-        });
-        const dateCheckboxes = dateFiltersDiv.querySelectorAll('input[type="checkbox"]');
-        dateCheckboxes.forEach(cb => {
-          const date = cb.id.replace('date-', '');
-          const dateObj = new Date(date);
-          if (dateObj.getFullYear().toString() === year) {
-            cb.checked = isChecked;
-          }
-        });
+        const year = cb.id.replace('year-', '');
+        currentSummary.filter(s => new Date(s.date).getFullYear().toString() === year).forEach(s => checked ? selectedDates.add(s.date) : selectedDates.delete(s.date));
+        document.querySelectorAll('#month-filters input').forEach(m => { if(m.id.includes(year)) m.checked = checked; });
+        document.querySelectorAll('#date-filters input').forEach(d => { if(new Date(d.id.replace('date-', '')).getFullYear().toString() === year) d.checked = checked; });
       } else if (type === 'month') {
-        const yearMonth = checkbox.id.replace('month-', '');
-        const [year, monthIdx] = yearMonth.split('-').map(Number);
-        toggleDatesByYearMonth(year, monthIdx, isChecked);
-        const dateCheckboxes = dateFiltersDiv.querySelectorAll('input[type="checkbox"]');
-        dateCheckboxes.forEach(cb => {
-          const date = cb.id.replace('date-', '');
-          const dateObj = new Date(date);
-          if (dateObj.getFullYear() === year && dateObj.getMonth() === monthIdx) {
-            cb.checked = isChecked;
-          }
-        });
-      } else if (type === 'date') {
-        const date = checkbox.id.replace('date-', '');
-        if (isChecked) {
-          selectedDates.add(date);
-        } else {
-          selectedDates.delete(date);
-        }
+        const [y, m] = cb.id.replace('month-', '').split('-').map(Number);
+        currentSummary.filter(s => { const d = new Date(s.date); return d.getFullYear() === y && d.getMonth() === m; }).forEach(s => checked ? selectedDates.add(s.date) : selectedDates.delete(s.date));
+        document.querySelectorAll('#date-filters input').forEach(d => { const dt = new Date(d.id.replace('date-', '')); if(dt.getFullYear() === y && dt.getMonth() === m) d.checked = checked; });
+      } else {
+        const date = cb.id.replace('date-', '');
+        checked ? selectedDates.add(date) : selectedDates.delete(date);
         updateYearMonthCheckboxes();
       }
-      
       updateModalView();
     }
 
     function updateYearMonthCheckboxes() {
-      const yearCheckboxes = yearFiltersDiv.querySelectorAll('input[type="checkbox"]');
-      yearCheckboxes.forEach(cb => {
-        const year = cb.id.replace('year-', '');
-        const datesInYear = currentSummary.filter(s => {
-          const dateObj = new Date(s.date);
-          return dateObj.getFullYear().toString() === year;
-        }).map(s => s.date);
-        const allSelected = datesInYear.every(d => selectedDates.has(d));
-        cb.checked = allSelected;
+      document.querySelectorAll('#year-filters input').forEach(cb => {
+        const y = cb.id.replace('year-', '');
+        cb.checked = currentSummary.filter(s => new Date(s.date).getFullYear().toString() === y).every(s => selectedDates.has(s.date));
       });
-      
-      const monthCheckboxes = monthFiltersDiv.querySelectorAll('input[type="checkbox"]');
-      monthCheckboxes.forEach(cb => {
-        const yearMonth = cb.id.replace('month-', '');
-        const [year, monthIdx] = yearMonth.split('-').map(Number);
-        const datesInMonth = currentSummary.filter(s => {
-          const dateObj = new Date(s.date);
-          return dateObj.getFullYear() === year && dateObj.getMonth() === monthIdx;
-        }).map(s => s.date);
-        const allSelected = datesInMonth.every(d => selectedDates.has(d));
-        cb.checked = allSelected;
-      });
-    }
-
-    function toggleDatesByYear(year, shouldSelect) {
-      currentSummary.forEach(s => {
-        const dateObj = new Date(s.date);
-        if (dateObj.getFullYear().toString() === year) {
-          if (shouldSelect) {
-            selectedDates.add(s.date);
-          } else {
-            selectedDates.delete(s.date);
-          }
-        }
-      });
-    }
-
-    function toggleDatesByYearMonth(year, monthIdx, shouldSelect) {
-      currentSummary.forEach(s => {
-        const dateObj = new Date(s.date);
-        if (dateObj.getFullYear() === year && dateObj.getMonth() === monthIdx) {
-          if (shouldSelect) {
-            selectedDates.add(s.date);
-          } else {
-            selectedDates.delete(s.date);
-          }
-        }
+      document.querySelectorAll('#month-filters input').forEach(cb => {
+        const [y, m] = cb.id.replace('month-', '').split('-').map(Number);
+        cb.checked = currentSummary.filter(s => { const d = new Date(s.date); return d.getFullYear() === y && d.getMonth() === m; }).every(s => selectedDates.has(s.date));
       });
     }
 
     function toggleAllCheckboxes() {
-      const allCheckboxes = document.querySelectorAll(
-        '#year-filters input[type="checkbox"], ' +
-        '#month-filters input[type="checkbox"], ' +
-        '#date-filters input[type="checkbox"]'
-      );
-      
       allSelected = !allSelected;
-      
-      allCheckboxes.forEach(checkbox => {
-        checkbox.checked = allSelected;
-        const event = new Event('change');
-        checkbox.dispatchEvent(event);
+      document.querySelectorAll('#year-filters input, #month-filters input, #date-filters input').forEach(cb => {
+        cb.checked = allSelected;
+        cb.dispatchEvent(new Event('change'));
       });
-      
       toggleAllBtn.textContent = allSelected ? 'Deselect All' : 'Select All';
     }
-
     toggleAllBtn.addEventListener('click', toggleAllCheckboxes);
 
     function updateModalView() {
@@ -422,82 +337,106 @@
 
     function renderDetailLists(data, container, key) {
       container.innerHTML = '';
-      if (data.length === 0) {
-        container.innerHTML = '<div class="list-item"><em>No data</em></div>';
-        return;
-      }
+      if (!data.length) { container.innerHTML = '<div class="list-item"><em>No data</em></div>'; return; }
       data.forEach(d => {
-        const div = document.createElement('div');
-        div.className = 'list-item';
-        div.innerHTML = `<strong>${d.date}:</strong> ${d[key].length > 0 ? d[key].join(', ') : '<em>None</em>'}`;
+        const div = document.createElement('div'); div.className = 'list-item';
+        div.innerHTML = `<strong>${d.date}:</strong> ${d[key].length ? d[key].join(', ') : '<em>None</em>'}`;
         container.appendChild(div);
       });
     }
 
     async function downloadDetailedReport() {
       const filtered = currentSummary.filter(s => selectedDates.has(s.date));
-      
-      if (filtered.length === 0) {
-        alert('No data to download. Please select at least one date.');
-        return;
-      }
-      
+      if (!filtered.length) return alert('No data to download. Please select at least one date.');
       try {
-        const response = await fetch('/download-excel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ selectedDates: Array.from(selectedDates) })
+        const res = await fetch('/download-excel', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ selectedDates: Array.from(selectedDates) }) 
         });
-        
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to generate report');
-        }
-        
-        const blob = await response.blob();
+        if (!res.ok) throw new Error('Failed to generate report');
+        const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `detailed-report-${new Date().toISOString().split('T')[0]}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const a = document.createElement('a'); 
+        a.href = url; 
+        a.download = `detailed-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a); a.click(); a.remove(); 
         URL.revokeObjectURL(url);
-      } catch (err) {
-        alert(`Download Error: ${err.message}`);
+      } catch (err) { 
+        alert(`Download Error: ${err.message}`); 
       }
     }
 
+    // Comparison Handler
+    compareBtn.addEventListener('click', async () => {
+      if (!refFileInput.files.length) return alert('Please upload a reference Excel file first.');
+      
+      compareBtn.disabled = true; compareBtn.textContent = 'Comparing...';
+      const formData = new FormData();
+      formData.append('referenceFile', refFileInput.files[0]);
+      // Send currently selected dates to server
+      formData.append('selectedDates', JSON.stringify(Array.from(selectedDates)));
+
+      try {
+        const res = await fetch('/compare-reference', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Comparison failed');
+
+        let htmlContent = '';
+        
+        // Loop through results for each date
+        data.results.forEach(item => {
+          const missingCount = item.missing.length;
+          htmlContent += `
+            <div class="date-group">
+              <div class="date-title">${item.date}</div>
+              <div class="date-meta">
+                Reference: ${item.totalReference} | Uploaded: ${item.totalUploaded} | Missing: ${missingCount}
+              </div>
+              ${missingCount > 0 
+                ? `<div class="missing-ids"><strong>Missing Police IDs:</strong> ${item.missing.join(', ')}</div>` 
+                : `<div class="no-missing">✅ All reference IDs are present</div>`
+              }
+            </div>
+          `;
+        });
+        
+        missingIdsList.innerHTML = htmlContent || '<div style="text-align:center; color:#666;">No dates selected</div>';
+        comparisonResult.classList.remove('hidden');
+
+      } catch (err) {
+        alert(`Comparison Error: ${err.message}`);
+      } finally {
+        compareBtn.disabled = false; compareBtn.textContent = 'Compare';
+      }
+    });
+
+    // Modal Controls
     viewDetailsBtn.addEventListener('click', () => detailModal.classList.remove('hidden'));
     closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
     detailModal.addEventListener('click', e => { if(e.target === detailModal) detailModal.classList.add('hidden'); });
     document.addEventListener('keydown', e => { if(e.key === 'Escape') detailModal.classList.add('hidden'); });
-    
     modalDownloadBtn.addEventListener('click', downloadDetailedReport);
 
+    // Main CSV Download
     downloadBtn.addEventListener('click', () => {
       const input = prompt('Enter comma-separated dates (YYYY-MM-DD) or leave empty for ALL dates:');
       if (input === null) return;
-      
       const dates = input ? input.split(',').map(d => d.trim()).filter(Boolean) : [];
-      fetch('/download-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ selectedDates: dates.length > 0 ? dates : [] })
+      fetch('/download-report', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ selectedDates: dates.length > 0 ? dates : [] }) 
       })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to generate report');
-        return res.blob();
-      })
+      .then(res => { if (!res.ok) throw new Error('Failed'); return res.blob(); })
       .then(blob => {
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
+        const a = document.createElement('a'); 
+        a.href = url; 
         a.download = `report-${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(a); a.click(); a.remove();
+        document.body.appendChild(a); a.click(); a.remove(); 
         URL.revokeObjectURL(url);
-      })
-      .catch(err => alert(`Download Error: ${err.message}`));
+      }).catch(err => alert(`Error: ${err.message}`));
     });
   </script>
 </body>
