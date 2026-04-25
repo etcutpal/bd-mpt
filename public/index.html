@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Upload & Summary</title>
+  <style>
+    :root { --primary: #4a90e2; --bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); --card: #fff; --text: #333; --border: #ddd; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); min-height: 100vh; padding: 2rem; color: var(--text); }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1, h2 { margin-bottom: 1rem; text-align: center; }
+    .card { background: var(--card); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+    #drop-zone { border: 2px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: 0.2s; border-radius: 8px; margin-bottom: 1rem; }
+    #drop-zone.dragover { border-color: var(--primary); background: #e8f0fe; }
+    .btn { padding: 0.7rem 1.4rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: 0.2s; margin: 0.4rem 0.3rem; }
+    .btn-primary { background: var(--primary); color: #fff; } .btn-primary:hover { background: #357abd; }
+    .btn-secondary { background: #6c757d; color: #fff; } .btn-secondary:hover { background: #5a6268; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.95rem; }
+    th, td { padding: 0.8rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #f8f9fa; font-weight: 600; }
+    tbody tr:nth-child(even) { background: #fafbfc; } tbody tr:hover { background: #eef2f7; }
+    .hidden { display: none !important; }
+    #actions { text-align: center; margin: 1rem 0; }
+    .msg { padding: 0.8rem; border-radius: 6px; margin: 1rem 0; font-size: 0.9rem; text-align: center; }
+    .success { background: #d4edda; color: #155724; } .error { background: #f8d7da; color: #721c24; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+    .modal { background: #fff; padding: 2rem; border-radius: 12px; width: 95%; max-width: 1000px; max-height: 90vh; overflow-y: auto; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .close-modal { position: absolute; top: 1rem; right: 1.2rem; font-size: 1.8rem; cursor: pointer; background: none; border: none; color: #666; }
+    .close-modal:hover { color: #000; }
+    
+    /* Filter Section */
+    .filter-section { margin: 1rem 0; padding: 1rem; background: #f4f6f8; border-radius: 6px; }
+    .filter-section h3 { margin-bottom: 0.8rem; color: var(--primary); }
+    .year-month-filter { display: flex; gap: 2rem; flex-wrap: wrap; }
+    .filter-column { min-width: 150px; }
+    .filter-column h4 { margin-bottom: 0.5rem; color: #666; font-size: 0.9rem; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
+    .checkbox-item { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; padding: 0.2rem 0; }
+    .checkbox-item input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
+    .checkbox-item label { cursor: pointer; font-size: 0.9rem; }
+    .date-list { max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding: 0.5rem; border-radius: 4px; background: #fff; }
+    .date-list .checkbox-item { padding: 0.3rem 0.2rem; }
+    
+    .detail-section { margin-top: 1.2rem; }
+    .detail-section h3 { margin-bottom: 0.5rem; color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 0.3rem; }
+    .list-item { padding: 0.4rem 0; border-bottom: 1px dashed #eee; }
+    .list-item strong { display: inline-block; width: 120px; color: #555; }
+    
+    /* Modal Actions */
+    .modal-actions { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #ddd; text-align: center; }
+    
+    @media (max-width: 768px) { 
+      table, .modal { font-size: 0.85rem; } 
+      .container { padding: 0 0.5rem; }
+      .year-month-filter { flex-direction: column; gap: 1rem; }
+      .filter-column { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>CSV Upload & Summary App</h1>
+    <div class="card">
+      <div id="drop-zone">Drag & Drop CSV here or Click to Upload</div>
+      <input type="file" id="file-input" accept=".csv" class="hidden">
+      <div id="upload-status"></div>
+      <div style="text-align: center;">
+        <button id="upload-btn" class="btn btn-primary" disabled>Upload CSV</button>
+      </div>
+    </div>
+
+    <div id="summary-section" class="card hidden">
+      <h2>Date-wise Summary</h2>
+      <div style="overflow-x: auto;">
+        <table id="summary-table">
+          <thead><tr><th>Date</th><th>Total Files</th><th>Uploaded</th><th>Not Uploaded</th><th>Unique Police ID Count</th><th>Unique Device SN Count</th></tr></thead>
+          <tbody id="summary-body"></tbody>
+        </table>
+      </div>
+      <div id="actions">
+        <button id="view-details-btn" class="btn btn-secondary">View Detailed Summary</button>
+        <button id="download-btn" class="btn btn-primary">Download Report</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="detail-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <button class="close-modal" id="close-modal">&times;</button>
+      <h2>Detailed Breakdown</h2>
+      
+      <!-- Filter Section with Year/Month/Date Checkboxes -->
+      <div class="filter-section">
+        <h3>Filter by Date</h3>
+        <div class="year-month-filter">
+          <div class="filter-column">
+            <h4>Years</h4>
+            <div id="year-filters"></div>
+          </div>
+          <div class="filter-column">
+            <h4>Months</h4>
+            <div id="month-filters"></div>
+          </div>
+          <div class="filter-column" style="flex: 2; min-width: 200px;">
+            <h4>Dates</h4>
+            <div id="date-filters" class="date-list"></div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="modal-summary-table">
+        <table>
+          <thead><tr><th>Date</th><th>Total Files</th><th>Uploaded</th><th>Not Uploaded</th><th>Unique Police ID Count</th><th>Unique Device SN Count</th></tr></thead>
+          <tbody id="modal-summary-body"></tbody>
+        </table>
+      </div>
+      
+      <div class="detail-section"><h3>Unique Police IDs</h3><div id="police-list"></div></div>
+      <div class="detail-section"><h3>Unique Device SNs</h3><div id="device-list"></div></div>
+      
+      <!-- Download Button in Modal -->
+      <div class="modal-actions">
+        <button id="modal-download-btn" class="btn btn-primary">Download Report (CSV)</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const statusDiv = document.getElementById('upload-status');
+    const summarySection = document.getElementById('summary-section');
+    const summaryBody = document.getElementById('summary-body');
+    const viewDetailsBtn = document.getElementById('view-details-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const detailModal = document.getElementById('detail-modal');
+    const closeModal = document.getElementById('close-modal');
+    const yearFiltersDiv = document.getElementById('year-filters');
+    const monthFiltersDiv = document.getElementById('month-filters');
+    const dateFiltersDiv = document.getElementById('date-filters');
+    const modalSummaryBody = document.getElementById('modal-summary-body');
+    const policeList = document.getElementById('police-list');
+    const deviceList = document.getElementById('device-list');
+    const modalDownloadBtn = document.getElementById('modal-download-btn');
+
+    let currentSummary = [];
+    let selectedDates = new Set();
+    let availableYears = new Set();
+    let availableMonths = new Set();
+
+    const monthNames = ["January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    // Drag & Drop Handlers
+    dropZone.addEventListener('click', () => fileInput.click());
+    ['dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); }));
+    dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFileSelect(e.dataTransfer.files[0]);
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) handleFileSelect(fileInput.files[0]);
+    });
+
+    function handleFileSelect(file) {
+      fileInput.files = new DataTransfer().files;
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      fileInput.files = dt.files;
+      uploadBtn.disabled = false;
+      statusDiv.textContent = `Selected: ${file.name}`;
+    }
+
+    // Upload Handler
+    uploadBtn.addEventListener('click', async () => {
+      if (!fileInput.files.length) return alert('Please select a CSV file first.');
+      statusDiv.className = 'msg'; statusDiv.textContent = 'Uploading & Processing...';
+      uploadBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('csvfile', fileInput.files[0]);
+
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Upload failed');
+        
+        statusDiv.className = 'msg success'; statusDiv.textContent = data.message;
+        currentSummary = data.summary;
+        renderSummaryTable(currentSummary, summaryBody);
+        summarySection.classList.remove('hidden');
+        initializeDateFilters();
+        fileInput.value = '';
+      } catch (err) {
+        statusDiv.className = 'msg error'; statusDiv.textContent = `Error: ${err.message}`;
+      } finally { uploadBtn.disabled = false; }
+    });
+
+    function renderSummaryTable(data, target) {
+      target.innerHTML = '';
+      if (!data.length) { target.innerHTML = '<tr><td colspan="6" style="text-align:center;">No records</td></tr>'; return; }
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.date}</td><td>${row.totalFiles}</td><td>${row.uploaded}</td><td>${row.notUploaded}</td><td>${row.uniquePoliceIDCount}</td><td>${row.uniqueDeviceSNCount}</td>`;
+        target.appendChild(tr);
+      });
+    }
+
+    function initializeDateFilters() {
+      availableYears.clear();
+      availableMonths.clear();
+      selectedDates.clear();
+      
+      // Extract years and months from data
+      currentSummary.forEach(s => {
+        const dateObj = new Date(s.date);
+        const year = dateObj.getFullYear();
+        const month = dateObj.getMonth(); // 0-11
+        availableYears.add(year);
+        availableMonths.add(`${year}-${month}`);
+        selectedDates.add(s.date); // Select all by default
+      });
+      
+      renderYearMonthFilters();
+      renderDateFilters();
+      updateModalView();
+    }
+
+    function renderYearMonthFilters() {
+      // Render Years
+      yearFiltersDiv.innerHTML = '';
+      const years = Array.from(availableYears).sort();
+      years.forEach(year => {
+        const label = createCheckboxItem(`year-${year}`, year, 'year');
+        yearFiltersDiv.appendChild(label);
+      });
+      
+      // Render Months
+      monthFiltersDiv.innerHTML = '';
+      const months = Array.from(availableMonths).sort();
+      months.forEach(yearMonth => {
+        const [year, monthIdx] = yearMonth.split('-').map(Number);
+        const monthName = monthNames[monthIdx];
+        const label = createCheckboxItem(`month-${yearMonth}`, `${monthName} ${year}`, 'month');
+        monthFiltersDiv.appendChild(label);
+      });
+    }
+
+    function renderDateFilters() {
+      dateFiltersDiv.innerHTML = '';
+      const dates = currentSummary.map(s => s.date).sort();
+      dates.forEach(date => {
+        const label = createCheckboxItem(`date-${date}`, date, 'date');
+        dateFiltersDiv.appendChild(label);
+      });
+    }
+
+    function createCheckboxItem(id, labelText, type) {
+      const div = document.createElement('div');
+      div.className = 'checkbox-item';
+      
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = id;
+      checkbox.checked = true;
+      checkbox.dataset.type = type;
+      
+      checkbox.addEventListener('change', handleDateFilterChange);
+      
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.textContent = labelText;
+      
+      div.appendChild(checkbox);
+      div.appendChild(label);
+      
+      return div;
+    }
+
+    function handleDateFilterChange(e) {
+      const checkbox = e.target;
+      const type = checkbox.dataset.type;
+      const isChecked = checkbox.checked;
+      
+      if (type === 'year') {
+        const year = checkbox.id.replace('year-', '');
+        toggleDatesByYear(year, isChecked);
+        // Update month checkboxes
+        const monthCheckboxes = monthFiltersDiv.querySelectorAll('input[type="checkbox"]');
+        monthCheckboxes.forEach(cb => {
+          const monthYear = cb.id.replace('month-', '');
+          const [mYear] = monthYear.split('-');
+          if (mYear === year) {
+            cb.checked = isChecked;
+          }
+        });
+        // Update date checkboxes
+        const dateCheckboxes = dateFiltersDiv.querySelectorAll('input[type="checkbox"]');
+        dateCheckboxes.forEach(cb => {
+          const date = cb.id.replace('date-', '');
+          const dateObj = new Date(date);
+          if (dateObj.getFullYear().toString() === year) {
+            cb.checked = isChecked;
+          }
+        });
+      } else if (type === 'month') {
+        const yearMonth = checkbox.id.replace('month-', '');
+        const [year, monthIdx] = yearMonth.split('-').map(Number);
+        toggleDatesByYearMonth(year, monthIdx, isChecked);
+        // Update date checkboxes
+        const dateCheckboxes = dateFiltersDiv.querySelectorAll('input[type="checkbox"]');
+        dateCheckboxes.forEach(cb => {
+          const date = cb.id.replace('date-', '');
+          const dateObj = new Date(date);
+          if (dateObj.getFullYear() === year && dateObj.getMonth() === monthIdx) {
+            cb.checked = isChecked;
+          }
+        });
+      } else if (type === 'date') {
+        const date = checkbox.id.replace('date-', '');
+        if (isChecked) {
+          selectedDates.add(date);
+        } else {
+          selectedDates.delete(date);
+        }
+        // Update year/month checkboxes based on manual date selection
+        updateYearMonthCheckboxes();
+      }
+      
+      updateModalView();
+    }
+
+    function updateYearMonthCheckboxes() {
+      // Update year checkboxes
+      const yearCheckboxes = yearFiltersDiv.querySelectorAll('input[type="checkbox"]');
+      yearCheckboxes.forEach(cb => {
+        const year = cb.id.replace('year-', '');
+        const datesInYear = currentSummary.filter(s => {
+          const dateObj = new Date(s.date);
+          return dateObj.getFullYear().toString() === year;
+        }).map(s => s.date);
+        const allSelected = datesInYear.every(d => selectedDates.has(d));
+        cb.checked = allSelected;
+      });
+      
+      // Update month checkboxes
+      const monthCheckboxes = monthFiltersDiv.querySelectorAll('input[type="checkbox"]');
+      monthCheckboxes.forEach(cb => {
+        const yearMonth = cb.id.replace('month-', '');
+        const [year, monthIdx] = yearMonth.split('-').map(Number);
+        const datesInMonth = currentSummary.filter(s => {
+          const dateObj = new Date(s.date);
+          return dateObj.getFullYear() === year && dateObj.getMonth() === monthIdx;
+        }).map(s => s.date);
+        const allSelected = datesInMonth.every(d => selectedDates.has(d));
+        cb.checked = allSelected;
+      });
+    }
+
+    function toggleDatesByYear(year, shouldSelect) {
+      currentSummary.forEach(s => {
+        const dateObj = new Date(s.date);
+        if (dateObj.getFullYear().toString() === year) {
+          if (shouldSelect) {
+            selectedDates.add(s.date);
+          } else {
+            selectedDates.delete(s.date);
+          }
+        }
+      });
+    }
+
+    function toggleDatesByYearMonth(year, monthIdx, shouldSelect) {
+      currentSummary.forEach(s => {
+        const dateObj = new Date(s.date);
+        if (dateObj.getFullYear() === year && dateObj.getMonth() === monthIdx) {
+          if (shouldSelect) {
+            selectedDates.add(s.date);
+          } else {
+            selectedDates.delete(s.date);
+          }
+        }
+      });
+    }
+
+    function updateModalView() {
+      const filtered = currentSummary.filter(s => selectedDates.has(s.date));
+      renderSummaryTable(filtered, modalSummaryBody);
+      renderDetailLists(filtered, policeList, 'policeIDs');
+      renderDetailLists(filtered, deviceList, 'deviceSNs');
+    }
+
+    function renderDetailLists(data, container, key) {
+      container.innerHTML = '';
+      if (data.length === 0) {
+        container.innerHTML = '<div class="list-item"><em>No data</em></div>';
+        return;
+      }
+      data.forEach(d => {
+        const div = document.createElement('div');
+        div.className = 'list-item';
+        div.innerHTML = `<strong>${d.date}:</strong> ${d[key].length > 0 ? d[key].join(', ') : '<em>None</em>'}`;
+        container.appendChild(div);
+      });
+    }
+
+        // Download detailed report as Excel with merged cells
+    async function downloadDetailedReport() {
+      const filtered = currentSummary.filter(s => selectedDates.has(s.date));
+      
+      if (filtered.length === 0) {
+        alert('No data to download. Please select at least one date.');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/download-excel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selectedDates: Array.from(selectedDates) })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to generate report');
+        }
+        
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `detailed-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        alert('Excel file downloaded successfully with merged cells!');
+      } catch (err) {
+        alert(`Download Error: ${err.message}`);
+      }
+    }
+
+    // Modal Controls
+    viewDetailsBtn.addEventListener('click', () => detailModal.classList.remove('hidden'));
+    closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
+    detailModal.addEventListener('click', e => { if(e.target === detailModal) detailModal.classList.add('hidden'); });
+    document.addEventListener('keydown', e => { if(e.key === 'Escape') detailModal.classList.add('hidden'); });
+    
+    // Modal Download Button
+    modalDownloadBtn.addEventListener('click', downloadDetailedReport);
+
+    // Main Download Handler (from summary page) - CSV
+    downloadBtn.addEventListener('click', () => {
+      const input = prompt('Enter comma-separated dates (YYYY-MM-DD) or leave empty for ALL dates:');
+      if (input === null) return;
+      
+      const dates = input ? input.split(',').map(d => d.trim()).filter(Boolean) : [];
+      fetch('/download-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedDates: dates.length > 0 ? dates : [] })
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to generate report');
+        return res.blob();
+      })
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(err => alert(`Download Error: ${err.message}`));
+    });
+
+    // Modal Controls
+    viewDetailsBtn.addEventListener('click', () => detailModal.classList.remove('hidden'));
+    closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
+    detailModal.addEventListener('click', e => { if(e.target === detailModal) detailModal.classList.add('hidden'); });
+    document.addEventListener('keydown', e => { if(e.key === 'Escape') detailModal.classList.add('hidden'); });
+    
+    // Modal Download Button
+    modalDownloadBtn.addEventListener('click', downloadDetailedReport);
+
+    // Main Download Handler (from summary page)
+    downloadBtn.addEventListener('click', () => {
+      const input = prompt('Enter comma-separated dates (YYYY-MM-DD) or leave empty for ALL dates:');
+      if (input === null) return;
+      
+      const dates = input ? input.split(',').map(d => d.trim()).filter(Boolean) : [];
+      fetch('/download-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedDates: dates.length > 0 ? dates : [] })
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to generate report');
+        return res.blob();
+      })
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(err => alert(`Download Error: ${err.message}`));
+    });
+  </script>
+</body>
+</html>
