@@ -279,7 +279,17 @@
     function createCheckboxItem(id, text, type) {
       const div = document.createElement('div'); div.className = 'checkbox-item';
       const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = id; cb.checked = true; cb.dataset.type = type;
-      cb.addEventListener('change', handleDateFilterChange);
+      cb.addEventListener('change', () => {
+        handleDateFilterChange(new Event('change', { bubbles: true }));
+        // Update comparison results immediately if they are visible
+        if (!comparisonResult.classList.contains('hidden')) {
+           if (refFileInput.files.length) {
+             compareBtn.click();
+           } else {
+             clearComparisonResult();
+           }
+        }
+      });
       const lbl = document.createElement('label'); lbl.htmlFor = id; lbl.textContent = text;
       div.appendChild(cb); div.appendChild(lbl);
       return div;
@@ -345,27 +355,33 @@
       });
     }
 
-    async function downloadDetailedReport() {
-      const filtered = currentSummary.filter(s => selectedDates.has(s.date));
-      if (!filtered.length) return alert('No data to download. Please select at least one date.');
-      try {
-        const res = await fetch('/download-excel', { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ selectedDates: Array.from(selectedDates) }) 
-        });
-        if (!res.ok) throw new Error('Failed to generate report');
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); 
-        a.href = url; 
-        a.download = `detailed-report-${new Date().toISOString().split('T')[0]}.xlsx`;
-        document.body.appendChild(a); a.click(); a.remove(); 
-        URL.revokeObjectURL(url);
-      } catch (err) { 
-        alert(`Download Error: ${err.message}`); 
+      async function downloadDetailedReport() {
+        const filtered = currentSummary.filter(s => selectedDates.has(s.date));
+        if (!filtered.length) return alert('No data to download. Please select at least one date.');
+        try {
+          const res = await fetch('/download-excel', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ selectedDates: Array.from(selectedDates) }) 
+          });
+          if (!res.ok) throw new Error('Failed to generate report');
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); 
+          a.href = url; 
+          a.download = `detailed-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+          document.body.appendChild(a); a.click(); a.remove(); 
+          URL.revokeObjectURL(url);
+        } catch (err) { 
+          alert(`Download Error: ${err.message}`); 
+        }
       }
-    }
+
+      function clearComparisonResult() {
+        comparisonResult.classList.add('hidden');
+        missingIdsList.innerHTML = '';
+      }
+
 
     // Comparison Handler
     compareBtn.addEventListener('click', async () => {
@@ -391,7 +407,7 @@
             <div class="date-group">
               <div class="date-title">${item.date}</div>
               <div class="date-meta">
-                Reference: ${item.totalReference} | Uploaded: ${item.totalUploaded} | Missing: ${missingCount}
+                Reference: ${item.totalReference} | Match: ${item.totalUploaded} | Missing: ${missingCount}
               </div>
               ${missingCount > 0 
                 ? `<div class="missing-ids"><strong>Missing Police IDs:</strong> ${item.missing.join(', ')}</div>` 

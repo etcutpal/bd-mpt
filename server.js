@@ -1,4 +1,5 @@
 const express = require('express');
+const session = require('express-session');
 const multer = require('multer');
 const csvParser = require('csv-parser');
 const fastCsv = require('fast-csv');
@@ -10,6 +11,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'police-audit-secret-key',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false } // Set to true if using HTTPS
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
@@ -23,10 +30,6 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
 });
 const upload = multer({ storage });
-
-// In-memory storage (session scope)
-let rawData = [];
-let summaryData = [];
 
 // Helper: Generate summary from rows
 function generateSummary(rows) {
@@ -78,7 +81,7 @@ function generateSummary(rows) {
 }
 
 // Helper: Generate report rows for CSV
-function generateReportRows(selectedDates) {
+function generateReportRows(summaryData, selectedDates) {
   const filtered = selectedDates && selectedDates.length > 0 
     ? summaryData.filter(s => selectedDates.includes(s.date))
     : summaryData;
@@ -114,20 +117,21 @@ app.post('/upload', upload.single('csvfile'), (req, res) => {
 
   stream.on('end', () => {
     fs.unlink(req.file.path, (err) => { if (err) console.error('Cleanup error:', err); });
-    rawData = rows;
-    summaryData = generateSummary(rows);
+    req.session.rawData = rows;
+    req.session.summaryData = generateSummary(rows);
 
     res.json({
       success: true,
       message: 'File processed successfully.',
       filename: req.file.originalname,
-      summary: summaryData
+      summary: req.session.summaryData
     });
   });
 });
 
 // 2. GET /summary
 app.get('/summary', (req, res) => {
+  const summaryData = req.session.summaryData || [];
   if (summaryData.length === 0) {
     return res.status(404).json({ success: false, message: 'No data uploaded.' });
   }
@@ -136,13 +140,14 @@ app.get('/summary', (req, res) => {
 
 // 3. POST /download-report (CSV)
 app.post('/download-report', (req, res) => {
+  const summaryData = req.session.summaryData || [];
   if (summaryData.length === 0) {
     return res.status(404).json({ success: false, message: 'No data available to download.' });
   }
 
   const { selectedDates } = req.body || {};
   const datesToFilter = Array.isArray(selectedDates) && selectedDates.length > 0 ? selectedDates : null;
-  const csvRows = generateReportRows(datesToFilter);
+  const csvRows = generateReportRows(summaryData, datesToFilter);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   res.setHeader('Content-Type', 'text/csv');
@@ -156,6 +161,7 @@ app.post('/download-report', (req, res) => {
 
 // 4. POST /download-excel
 app.post('/download-excel', (req, res) => {
+  const summaryData = req.session.summaryData || [];
   if (summaryData.length === 0) {
     return res.status(404).json({ success: false, message: 'No data available to download.' });
   }
@@ -267,25 +273,28 @@ app.post('/compare-reference', upload.single('referenceFile'), (req, res) => {
     }
     
     // If no dates selected, compare all dates
+    const summaryData = req.session.summaryData || [];
     if (!datesToCompare || datesToCompare.length === 0) {
       datesToCompare = summaryData.map(s => s.date);
     }
 
     // 4. Compare Per Date
     const resultsByDate = [];
-    let totalUniqueSystemIds = new Set();
+    const allUploadedIds = new Set();
 
     datesToCompare.forEach(date => {
       const dayData = summaryData.find(s => s.date === date);
       
       if (dayData) {
         const policeIdsForDate = dayData.policeIDs || [];
-        policeIdsForDate.forEach(id => totalUniqueSystemIds.add(id));
+        policeIdsForDate.forEach(id => allUploadedIds.add(id));
 
         // Find missing: In Reference but NOT in this date's upload
+        // Optimization: Convert policeIdsForDate to a Set for O(1) lookup
+        const uploadedSet = new Set(policeIdsForDate);
         const missingForDate = [];
         referenceUserIds.forEach(refId => {
-          if (!policeIdsForDate.includes(refId)) {
+          if (!uploadedSet.has(refId)) {
             missingForDate.push(refId);
           }
         });
@@ -304,7 +313,8 @@ app.post('/compare-reference', upload.single('referenceFile'), (req, res) => {
 
     res.json({
       success: true,
-      results: resultsByDate
+      results: resultsByDate,
+      allUniqueUploadedIds: Array.from(allUploadedIds).sort()
     });
 
   } catch (err) {
