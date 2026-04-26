@@ -6,27 +6,35 @@
   <title>CSV Upload & Summary App</title>
   <style>
     :root { 
-      --primary: #4a90e2; 
-      --bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); 
-      --card: #fff; 
-      --text: #333; 
-      --border: #ddd; 
+      --primary: #2563eb; 
+      --primary-hover: #1d4ed8;
+      --secondary: #64748b;
+      --secondary-hover: #475569;
+      --bg: #f8fafc; 
+      --card: #ffffff; 
+      --text-main: #1e293b; 
+      --text-muted: #64748b;
+      --border: #e2e8f0; 
+      --success: #22c55e;
+      --error: #ef4444;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    body { background: var(--bg); min-height: 100vh; padding: 2rem; color: var(--text); }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    body { background-color: var(--bg); min-height: 100vh; padding: 2rem; color: var(--text-main); line-height: 1.5; }
     .container { max-width: 1100px; margin: 0 auto; }
-    h1, h2 { margin-bottom: 1rem; text-align: center; }
-    .card { background: var(--card); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
-    #drop-zone { border: 2px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: 0.2s; border-radius: 8px; margin-bottom: 1rem; }
-    #drop-zone.dragover { border-color: var(--primary); background: #e8f0fe; }
-    .btn { padding: 0.7rem 1.4rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: 0.2s; margin: 0.4rem 0.3rem; }
-    .btn-primary { background: var(--primary); color: #fff; } .btn-primary:hover { background: #357abd; }
-    .btn-secondary { background: #6c757d; color: #fff; } .btn-secondary:hover { background: #5a6268; }
-    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.95rem; }
-    th, td { padding: 0.8rem; text-align: left; border-bottom: 1px solid var(--border); }
-    th { background: #f8f9fa; font-weight: 600; }
-    tbody tr:nth-child(even) { background: #fafbfc; } tbody tr:hover { background: #eef2f7; }
+    h1 { font-size: 2rem; font-weight: 800; color: var(--text-main); margin-bottom: 2rem; text-align: center; letter-spacing: -0.025em; }
+    h2 { font-size: 1.25rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem; }
+    .card { background: var(--card); padding: 2rem; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); margin-bottom: 1.5rem; }
+    #drop-zone { border: 2px dashed var(--border); padding: 3rem 2rem; text-align: center; cursor: pointer; transition: all 0.2s ease; border-radius: 12px; margin-bottom: 1.5rem; color: var(--text-muted); font-weight: 500; background: #fafafa; }
+    #drop-zone:hover { border-color: var(--primary); background: #f0f7ff; color: var(--primary); }
+    #drop-zone.dragover { border-color: var(--primary); background: #eff6ff; transform: scale(1.01); }
+    .btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s ease; margin: 0.4rem 0.3rem; font-size: 0.9rem; }
+    .btn-primary { background: var(--primary); color: #fff; } .btn-primary:hover { background: var(--primary-hover); box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2); }
+    .btn-secondary { background: var(--secondary); color: #fff; } .btn-secondary:hover { background: var(--secondary-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+    th, td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #f1f5f9; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+    tbody tr:nth-child(even) { background: #f8fafc; } tbody tr:hover { background: #f1f5f9; }
     .hidden { display: none !important; }
     #actions { text-align: center; margin: 1rem 0; }
     .msg { padding: 0.8rem; border-radius: 6px; margin: 1rem 0; font-size: 0.9rem; text-align: center; }
@@ -279,8 +287,8 @@
     function createCheckboxItem(id, text, type) {
       const div = document.createElement('div'); div.className = 'checkbox-item';
       const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = id; cb.checked = true; cb.dataset.type = type;
-      cb.addEventListener('change', () => {
-        handleDateFilterChange(new Event('change', { bubbles: true }));
+      cb.addEventListener('change', (e) => {
+        handleDateFilterChange(e);
         // Update comparison results immediately if they are visible
         if (!comparisonResult.classList.contains('hidden')) {
            if (refFileInput.files.length) {
