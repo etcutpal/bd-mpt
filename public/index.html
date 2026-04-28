@@ -102,7 +102,7 @@
       <h2>Date-wise Summary</h2>
       <div style="overflow-x: auto;">
         <table id="summary-table">
-          <thead><tr><th>Date</th><th>Total Files</th><th>Uploaded</th><th>Not Uploaded</th><th>Unique Police ID Count</th><th>Unique Device SN Count</th></tr></thead>
+          <thead><tr><th>Date</th><th>Total Files</th><th>Uploaded</th><th>Not Uploaded</th><th>% Upload Done</th><th>% Remaining</th><th>Unique Police ID Count</th><th>Unique Device SN Count</th></tr></thead>
           <tbody id="summary-body"></tbody>
         </table>
       </div>
@@ -135,7 +135,7 @@
       <!-- Summary Table -->
       <div id="modal-summary-table">
         <table>
-          <thead><tr><th>Date</th><th>Total Files</th><th>Uploaded</th><th>Not Uploaded</th><th>Unique Police ID Count</th><th>Unique Device SN Count</th></tr></thead>
+          <thead><tr><th>Date</th><th>Total Files</th><th>Uploaded</th><th>Not Uploaded</th><th>% Upload Done</th><th>% Remaining</th><th>Unique Police ID Count</th><th>Unique Device SN Count</th></tr></thead>
           <tbody id="modal-summary-body"></tbody>
         </table>
       </div>
@@ -246,10 +246,15 @@
 
     function renderSummaryTable(data, target) {
       target.innerHTML = '';
-      if (!data.length) { target.innerHTML = '<tr><td colspan="6" style="text-align:center;">No records</td></tr>'; return; }
+      if (!data.length) { target.innerHTML = '<tr><td colspan="8" style="text-align:center;">No records</td></tr>'; return; }
       data.forEach(row => {
+        const uploadPct = row.totalFiles > 0 ? ((row.uploaded / row.totalFiles) * 100).toFixed(1) : '0.0';
+        const remainPct = row.totalFiles > 0 ? ((row.notUploaded / row.totalFiles) * 100).toFixed(1) : '0.0';
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${row.date}</td><td>${row.totalFiles}</td><td>${row.uploaded}</td><td>${row.notUploaded}</td><td>${row.uniquePoliceIDCount}</td><td>${row.uniqueDeviceSNCount}</td>`;
+        tr.innerHTML = `<td>${row.date}</td><td>${row.totalFiles}</td><td>${row.uploaded}</td><td>${row.notUploaded}</td>` +
+          `<td style="color:#16a34a;font-weight:600;">${uploadPct}%</td>` +
+          `<td style="color:#dc2626;font-weight:600;">${remainPct}%</td>` +
+          `<td>${row.uniquePoliceIDCount}</td><td>${row.uniqueDeviceSNCount}</td>`;
         target.appendChild(tr);
       });
     }

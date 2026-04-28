@@ -88,8 +88,12 @@ function generateReportRows(summaryData, selectedDates) {
 
   const rows = [];
   // Section 1: Summary
-  rows.push(['Date', 'Total Files', 'Uploaded', 'Not Uploaded', 'Unique Police ID Count', 'Unique Device SN Count']);
-  filtered.forEach(s => rows.push([s.date, s.totalFiles, s.uploaded, s.notUploaded, s.uniquePoliceIDCount, s.uniqueDeviceSNCount]));
+  rows.push(['Date', 'Total Files', 'Uploaded', 'Not Uploaded', '% Upload Done', '% Remaining', 'Unique Police ID Count', 'Unique Device SN Count']);
+  filtered.forEach(s => {
+    const uploadPct = s.totalFiles > 0 ? ((s.uploaded / s.totalFiles) * 100).toFixed(1) + '%' : '0.0%';
+    const remainPct = s.totalFiles > 0 ? ((s.notUploaded / s.totalFiles) * 100).toFixed(1) + '%' : '0.0%';
+    rows.push([s.date, s.totalFiles, s.uploaded, s.notUploaded, uploadPct, remainPct, s.uniquePoliceIDCount, s.uniqueDeviceSNCount]);
+  });
   rows.push([]); // Blank separator
   // Section 2: Police IDs
   rows.push(['DATE', 'UNIQUE POLICE IDs']);
@@ -176,7 +180,7 @@ app.post('/download-excel', (req, res) => {
   }
 
   const wsData = [];
-  wsData.push(['Date', 'Total Files', 'Uploaded', 'Not Uploaded', 'Unique Police ID Count', 'Unique Device SNs', 'Unique Police IDs']);
+  wsData.push(['Date', 'Total Files', 'Uploaded', 'Not Uploaded', '% Upload Done', '% Remaining', 'Unique Police ID Count', 'Unique Device SNs', 'Unique Police IDs']);
   
   let currentRow = 2; 
   const merges = [];
@@ -184,6 +188,8 @@ app.post('/download-excel', (req, res) => {
   filtered.forEach((item) => {
     const maxRows = Math.max(item.policeIDs.length, item.deviceSNs.length, 1);
     const startRow = currentRow;
+    const uploadPct = item.totalFiles > 0 ? parseFloat(((item.uploaded / item.totalFiles) * 100).toFixed(1)) : 0;
+    const remainPct = item.totalFiles > 0 ? parseFloat(((item.notUploaded / item.totalFiles) * 100).toFixed(1)) : 0;
     
     for (let i = 0; i < maxRows; i++) {
       wsData.push([
@@ -191,6 +197,8 @@ app.post('/download-excel', (req, res) => {
         i === 0 ? item.totalFiles : '',
         i === 0 ? item.uploaded : '',
         i === 0 ? item.notUploaded : '',
+        i === 0 ? uploadPct + '%' : '',
+        i === 0 ? remainPct + '%' : '',
         i === 0 ? item.uniquePoliceIDCount : '',
         item.deviceSNs[i] || '',
         item.policeIDs[i] || ''
@@ -199,7 +207,7 @@ app.post('/download-excel', (req, res) => {
     }
     
     if (maxRows > 1) {
-      for (let col = 0; col < 5; col++) {
+      for (let col = 0; col < 7; col++) {
         merges.push({ s: { r: startRow - 1, c: col }, e: { r: startRow + maxRows - 2, c: col } });
       }
     }
@@ -208,7 +216,7 @@ app.post('/download-excel', (req, res) => {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   
-  const headerCells = ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'];
+  const headerCells = ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1', 'H1', 'I1'];
   headerCells.forEach(cell => {
     if (ws[cell]) {
       ws[cell].s = ws[cell].s || {};
@@ -231,7 +239,7 @@ app.post('/download-excel', (req, res) => {
 
   ws['!merges'] = merges;
   ws['!cols'] = [
-    { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 24 }, { wch: 25 }, { wch: 20 }
+    { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 24 }, { wch: 25 }, { wch: 20 }
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Detailed Report');
