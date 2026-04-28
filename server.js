@@ -373,6 +373,92 @@ function deviceSearch_parseExcelFile(filePath) {
 const DEVICE_ORG_DIR = path.join(__dirname, 'file', 'organization');
 const DEVICE_USER_DIR = path.join(__dirname, 'file', 'user');
 
+// GET /api/device-scan-status
+// Scans both folders and reports duplicate Device IPs and duplicate User IDs
+app.get('/api/device-scan-status', (req, res) => {
+  const orgFiles  = deviceSearch_getAllExcelFiles(DEVICE_ORG_DIR);
+  const userFiles = deviceSearch_getAllExcelFiles(DEVICE_USER_DIR);
+
+  // ── Org files: detect duplicate Device IPs ──────────────────────────────
+  const ipIndex   = new Map(); // ip → [{ sourceFile, deviceName, orgCode, org }]
+  let orgParseErrors = [];
+
+  for (const filePath of orgFiles) {
+    const relFile = path.relative(__dirname, filePath).replace(/\\/g, '/');
+    let rows;
+    try {
+      rows = deviceSearch_parseExcelFile(filePath);
+    } catch (e) {
+      orgParseErrors.push({ file: relFile, error: e.message });
+      continue;
+    }
+    for (const row of rows) {
+      const ip = row['Device IP'] || '';
+      if (!ip) continue;
+      if (!ipIndex.has(ip)) ipIndex.set(ip, []);
+      ipIndex.get(ip).push({
+        sourceFile:  relFile,
+        deviceName:  row['Device Name*'] || row['Device Name'] || '',
+        orgCode:     row['Organization Code*'] || row['Organization Code'] || '',
+        organization: row['Organization'] || ''
+      });
+    }
+  }
+
+  const duplicateIps = [];
+  ipIndex.forEach((entries, ip) => {
+    if (entries.length > 1) duplicateIps.push({ ip, entries });
+  });
+
+  // ── User files: detect duplicate User IDs (same org) ────────────────────
+  const userIdIndex   = new Map(); // userId → [{ sourceFile, orgCode, org }]
+  let userParseErrors = [];
+
+  for (const filePath of userFiles) {
+    const relFile = path.relative(__dirname, filePath).replace(/\\/g, '/');
+    let rows;
+    try {
+      rows = deviceSearch_parseExcelFile(filePath);
+    } catch (e) {
+      userParseErrors.push({ file: relFile, error: e.message });
+      continue;
+    }
+    for (const row of rows) {
+      const uid = row['User ID'] || '';
+      if (!uid) continue;
+      if (!userIdIndex.has(uid)) userIdIndex.set(uid, []);
+      userIdIndex.get(uid).push({
+        sourceFile:   relFile,
+        orgCode:      row['Organization Code'] || '',
+        organization: row['Organization'] || ''
+      });
+    }
+  }
+
+  const duplicateUserIds = [];
+  userIdIndex.forEach((entries, userId) => {
+    if (entries.length > 1) duplicateUserIds.push({ userId, entries });
+  });
+
+  res.json({
+    success: true,
+    orgFiles:        orgFiles.map(f => path.relative(__dirname, f).replace(/\\/g, '/')),
+    userFiles:       userFiles.map(f => path.relative(__dirname, f).replace(/\\/g, '/')),
+    duplicateIps,
+    duplicateUserIds,
+    orgParseErrors,
+    userParseErrors,
+    summary: {
+      totalOrgFiles:        orgFiles.length,
+      totalUserFiles:       userFiles.length,
+      totalUniqueIps:       ipIndex.size,
+      duplicateIpCount:     duplicateIps.length,
+      duplicateUserIdCount: duplicateUserIds.length,
+      parseErrorCount:      orgParseErrors.length + userParseErrors.length
+    }
+  });
+});
+
 // GET /api/device-search?ip=<Device IP>
 // Searches all org files for the IP, then matches user files by Org Code + Organization
 app.get('/api/device-search', (req, res) => {
@@ -470,6 +556,272 @@ app.get('/api/device-view', (req, res) => {
   }
 
   res.json({ success: true, rows: results });
+});
+
+// POST /api/device-csv-breakdown
+// Accepts a CSV file (filename = IP address) + runs device search + per-date breakdown
+const deviceSearch_csvUpload = multer({
+  storage: multer.diskStorage({
+    destination: uploadsDir,
+    filename: (req, file, cb) => cb(null, `dvcsr-${Date.now()}-${file.originalname}`)
+  })
+});
+
+app.post('/api/device-csv-breakdown', deviceSearch_csvUpload.single('csvFile'), (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: 'No CSV file uploaded.' });
+
+  const ip = (req.body.ip || '').trim();
+  if (!ip) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ success: false, message: 'IP address is required.' });
+  }
+
+  // Step 1: Parse CSV rows
+  const csvRows = [];
+  const stream = fs.createReadStream(req.file.path)
+    .pipe(csvParser({ mapHeaders: ({ header }) => header.trim() }));
+
+  stream.on('data', row => csvRows.push(row));
+  stream.on('error', err => {
+    fs.unlink(req.file.path, () => {});
+    res.status(400).json({ success: false, message: 'CSV parsing failed: ' + err.message });
+  });
+  stream.on('end', () => {
+    fs.unlink(req.file.path, () => {});
+
+    // Step 2: Build per-date summary from CSV
+    const summaryData = generateSummary(csvRows);
+
+    // Step 3: Device search for the IP
+    const orgFiles = deviceSearch_getAllExcelFiles(DEVICE_ORG_DIR);
+    let deviceMatch = null;
+    for (const filePath of orgFiles) {
+      const rows = deviceSearch_parseExcelFile(filePath);
+      const row = rows.find(r => r['Device IP'] === ip);
+      if (row) {
+        deviceMatch = {
+          sourceFile: path.relative(__dirname, filePath).replace(/\\/g, '/'),
+          deviceName: row['Device Name*'] || row['Device Name'] || '',
+          organizationCode: row['Organization Code*'] || row['Organization Code'] || '',
+          organization: row['Organization'] || ''
+        };
+        break;
+      }
+    }
+
+    // Step 4: Get matched User IDs from user files (reference list)
+    const userFiles = deviceSearch_getAllExcelFiles(DEVICE_USER_DIR);
+    const referenceUserIds = new Set();
+    const matchedUsers = [];
+
+    if (deviceMatch) {
+      for (const filePath of userFiles) {
+        const rows = deviceSearch_parseExcelFile(filePath);
+        for (const row of rows) {
+          const rowOrgCode = row['Organization Code'] || '';
+          const rowOrg = row['Organization'] || '';
+          if (rowOrgCode === deviceMatch.organizationCode && rowOrg === deviceMatch.organization) {
+            const uid = row['User ID'] || '';
+            if (uid) {
+              referenceUserIds.add(uid);
+              matchedUsers.push({
+                userId: uid,
+                sourceFile: path.relative(__dirname, filePath).replace(/\\/g, '/')
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Step 5: Per-date breakdown — compare CSV police IDs vs reference user IDs
+    const breakdown = summaryData.map(dayData => {
+      const csvPoliceIds = new Set(dayData.policeIDs);
+      const foundIds = [];
+      const missingIds = [];
+
+      referenceUserIds.forEach(refId => {
+        if (csvPoliceIds.has(refId)) foundIds.push(refId);
+        else missingIds.push(refId);
+      });
+
+      const uploadPct  = dayData.totalFiles > 0 ? ((dayData.uploaded    / dayData.totalFiles) * 100).toFixed(1) : '0.0';
+      const notUpPct   = dayData.totalFiles > 0 ? ((dayData.notUploaded / dayData.totalFiles) * 100).toFixed(1) : '0.0';
+
+      return {
+        date:          dayData.date,
+        totalFiles:    dayData.totalFiles,
+        uploaded:      dayData.uploaded,
+        notUploaded:   dayData.notUploaded,
+        uploadPct,
+        notUpPct,
+        deviceSNCount: dayData.uniqueDeviceSNCount,
+        deviceSNs:     dayData.deviceSNs || [],
+        referenceCount: referenceUserIds.size,
+        uploadedCount:  dayData.uniquePoliceIDCount,
+        foundIds:       foundIds.sort(),
+        foundCount:     foundIds.length,
+        missingIds:     missingIds.sort(),
+        missingCount:   missingIds.length
+      };
+    });
+
+    res.json({
+      success: true,
+      found: !!deviceMatch,
+      device: deviceMatch,
+      users: matchedUsers,
+      breakdown
+    });
+  });
+});
+
+// POST /api/device-breakdown-excel
+// Generates an Excel report from the breakdown data sent by the frontend
+app.post('/api/device-breakdown-excel', (req, res) => {
+  const { device, breakdown } = req.body || {};
+  if (!breakdown || !breakdown.length) {
+    return res.status(400).json({ success: false, message: 'No breakdown data provided.' });
+  }
+
+  const wb   = XLSX.utils.book_new();
+  const ws   = {};
+  const thin = { style: 'thin', color: { rgb: '000000' } };
+  const bord = { top: thin, bottom: thin, left: thin, right: thin };
+
+  // Helpers
+  const NUM_COLS = 13; // total columns A–M
+  const colCount = NUM_COLS;
+
+  function setCell(ws, r, c, value, style) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    ws[addr] = { v: value, s: style || {} };
+    if (typeof value === 'number') ws[addr].t = 'n';
+    else ws[addr].t = 's';
+  }
+
+  function headerStyle(bgRgb) {
+    return {
+      font:      { bold: true },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border:    bord
+    };
+  }
+
+  function labelStyle() {
+    return {
+      font:      { bold: true },
+      alignment: { vertical: 'center' },
+      border:    bord
+    };
+  }
+
+  function valueStyle(wrap) {
+    return {
+      alignment: { vertical: 'center', wrapText: !!wrap },
+      border:    bord
+    };
+  }
+
+  function numStyle(bgRgb) {
+    return {
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border:    bord
+    };
+  }
+
+  const merges = [];
+  let R = 0;
+
+  // ── Row 0: "DEVICE INFORMATION" merged header ─────────────────────────────
+  setCell(ws, R, 0, 'DEVICE INFORMATION', headerStyle('2563EB'));
+  for (let c = 1; c < colCount; c++) setCell(ws, R, c, '', headerStyle('2563EB'));
+  merges.push({ s: { r: R, c: 0 }, e: { r: R, c: colCount - 1 } });
+  R++;
+
+  // ── Rows 1-5: Device info key/value pairs ────────────────────────────────
+  const devFields = [
+    ['Device IP',         device ? device.deviceIp || ''           : ''],
+    ['Device Name',       device ? device.deviceName || ''         : ''],
+    ['Organization Code', device ? device.organizationCode || ''   : ''],
+    ['Organization',      device ? device.organization || ''       : ''],
+  ];
+  devFields.forEach(([label, val]) => {
+    setCell(ws, R, 0, label, labelStyle());
+    setCell(ws, R, 1, val,   valueStyle());
+    for (let c = 2; c < colCount; c++) setCell(ws, R, c, '', valueStyle());
+    merges.push({ s: { r: R, c: 1 }, e: { r: R, c: colCount - 1 } });
+    R++;
+  });
+
+  // ── Blank row ────────────────────────────────────────────────────────────
+  for (let c = 0; c < colCount; c++) setCell(ws, R, c, '', {});
+  R++;
+
+  // ── "SUMMARY" merged header ───────────────────────────────────────────────
+  setCell(ws, R, 0, 'SUMMARY', headerStyle('2563EB'));
+  for (let c = 1; c < colCount; c++) setCell(ws, R, c, '', headerStyle('2563EB'));
+  merges.push({ s: { r: R, c: 0 }, e: { r: R, c: colCount - 1 } });
+  R++;
+
+  // ── Column header row ────────────────────────────────────────────────────
+  const headers = [
+    'Date', 'Total Files', 'Uploaded', 'Not Uploaded',
+    'Uploaded %', 'Not Uploaded %',
+    'Reference Count', 'Found Count', 'Missing Count',
+    'Unique Device Count', 'Found Police IDs',
+    'Missing Police IDs', 'Unique Device SNs'
+  ];
+  headers.forEach((h, c) => setCell(ws, R, c, h, headerStyle('475569')));
+  R++;
+
+  // ── Data rows ─────────────────────────────────────────────────────────────
+  breakdown.forEach(row => {
+    const snText      = (row.deviceSNs   || []).join(', ');
+    const foundText   = (row.foundIds    || []).join(', ');
+    const missingText = (row.missingIds  || []).join(', ');
+
+    setCell(ws, R, 0,  row.date,             { font: { bold: true }, alignment: { vertical: 'center' }, border: bord });
+    setCell(ws, R, 1,  row.totalFiles,       numStyle());
+    setCell(ws, R, 2,  row.uploaded,         numStyle());
+    setCell(ws, R, 3,  row.notUploaded,      numStyle());
+    setCell(ws, R, 4,  row.uploadPct + '%',  numStyle());
+    setCell(ws, R, 5,  row.notUpPct  + '%',  numStyle());
+    setCell(ws, R, 6,  row.referenceCount,   numStyle());
+    setCell(ws, R, 7,  row.foundCount,       numStyle());
+    setCell(ws, R, 8,  row.missingCount,     numStyle());
+    setCell(ws, R, 9,  row.deviceSNCount,    numStyle());
+    setCell(ws, R, 10, foundText,            { alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(ws, R, 11, missingText,          { alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(ws, R, 12, snText,               { alignment: { vertical: 'top', wrapText: true }, border: bord });
+    R++;
+  });
+
+  // ── Set worksheet ref and properties ──────────────────────────────────────
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: colCount - 1 } });
+  ws['!merges'] = merges;
+  ws['!cols'] = [
+    { wch: 14 }, { wch: 12 }, { wch: 11 }, { wch: 13 },
+    { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 13 },
+    { wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 28 }, { wch: 30 }
+  ];
+  // Set row heights for data rows to accommodate wrapped IDs
+  ws['!rows'] = [];
+  for (let i = 0; i < R; i++) ws['!rows'].push({ hpt: 18 });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Breakdown Report');
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+  // Filename: DeviceName-Organization-IP.xlsx
+  const safeName = (s) => String(s || '').replace(/[/\\?%*:|"<>]/g, '-').trim();
+  const devName  = safeName(device ? device.deviceName       : 'Device');
+  const org      = safeName(device ? device.organization     : 'Org');
+  const ip       = safeName(device ? device.deviceIp         : 'IP');
+  const filename = `${devName}-${org}-${ip}.xlsx`;
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
 });
 
 // ============================================================

@@ -78,6 +78,57 @@
     .loading-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .count-badge { font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem; font-weight: 400; }
+
+    /* START: CSV Breakdown Feature styles */
+    .csv-upload-section { margin-top: 1.5rem; border-top: 2px dashed var(--border); padding-top: 1.5rem; }
+    .csv-upload-section h2 { font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .csv-upload-section p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; }
+    .csv-file-label { display: inline-flex; align-items: center; gap: 0.6rem; cursor: pointer; padding: 0.6rem 1.1rem; border: 1.5px dashed var(--border); border-radius: 8px; background: #fafafa; font-size: 0.9rem; color: var(--text-muted); transition: all 0.2s; }
+    .csv-file-label:hover { border-color: var(--primary); color: var(--primary); background: #f0f7ff; }
+    #csv-file-name { font-size: 0.85rem; color: var(--text-main); font-weight: 500; }
+
+    .breakdown-section { margin-top: 1.5rem; }
+    .breakdown-section h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+    .breakdown-table th { background: #f1f5f9; }
+    .breakdown-table td { vertical-align: top; font-size: 0.85rem; }
+    .breakdown-row-ok { background: #f0fdf4 !important; }
+    .breakdown-row-miss { background: #fff7f7 !important; }
+    .id-pill { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin: 0.1rem; }
+    .pill-found { background: #dcfce7; color: #166534; }
+    .pill-missing { background: #fee2e2; color: #991b1b; }
+    .badge-ok { background: #dcfce7; color: #166534; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; }
+    .badge-miss { background: #fee2e2; color: #991b1b; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; }
+    .badge-warn { background: #fef9c3; color: #854d0e; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; }
+    /* breakdown date filter */
+    .bd-filter { background: #f4f6f8; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+    .bd-filter label { font-size:0.85rem; font-weight:600; color:var(--text-muted); }
+    .bd-date-checks { display:flex; flex-wrap:wrap; gap:0.5rem; }
+    .bd-date-checks .check-item { display:flex; align-items:center; gap:0.3rem; font-size:0.85rem; cursor:pointer; }
+    .bd-date-checks .check-item input { cursor:pointer; width:15px; height:15px; }
+
+    /* START: Scan Status styles */
+    .status-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+    .stat-card { background:#f8fafc; border:1px solid var(--border); border-radius:10px; padding:1rem; text-align:center; }
+    .stat-card .stat-num { font-size:2rem; font-weight:800; line-height:1; margin-bottom:0.25rem; }
+    .stat-card .stat-label { font-size:0.78rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.04em; }
+    .stat-ok   .stat-num { color:#16a34a; }
+    .stat-warn .stat-num { color:#d97706; }
+    .stat-err  .stat-num { color:#dc2626; }
+    .stat-info .stat-num { color:#2563eb; }
+    .scan-section { margin-bottom:1.5rem; }
+    .scan-section h3 { font-size:0.95rem; font-weight:700; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem; }
+    .dup-block { background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:0.85rem 1rem; margin-bottom:0.75rem; font-size:0.875rem; }
+    .dup-block .dup-key { font-weight:700; color:#92400e; margin-bottom:0.4rem; }
+    .dup-block .dup-entry { padding:0.2rem 0; color:#44403c; border-bottom:1px dashed #fed7aa; }
+    .dup-block .dup-entry:last-child { border-bottom:none; }
+    .dup-block .dup-entry .source-badge { font-size:0.75rem; }
+    .err-block { background:#fff1f2; border:1px solid #fecdd3; border-radius:8px; padding:0.75rem 1rem; margin-bottom:0.5rem; font-size:0.875rem; color:#9f1239; }
+    .file-list { display:flex; flex-direction:column; gap:0.3rem; }
+    .file-list .source-badge { font-size:0.78rem; }
+    .all-ok-msg { color:#16a34a; font-style:italic; font-size:0.9rem; padding:0.5rem 0; }
+    /* END: Scan Status styles */
+
+    /* END: CSV Breakdown Feature styles */
   </style>
 </head>
 <body>
@@ -91,6 +142,7 @@
     <div class="tabs">
       <button class="tab-btn active" data-tab="search">Search by IP</button>
       <button class="tab-btn" data-tab="view">View All Devices</button>
+      <button class="tab-btn" data-tab="scan">⚠️ Scan Status</button>
     </div>
 
     <!-- TAB 1: Search -->
@@ -123,6 +175,58 @@
           </div>
         </div>
       </div>
+
+      <!-- START: CSV Breakdown Feature -->
+      <div class="card">
+        <div class="csv-upload-section">
+          <h2>📂 Optional: Upload Device CSV Report</h2>
+          <p>Filename must be the device IP address (e.g. <code>10.4.3.62.csv</code>). It will auto-search and show a detailed per-date breakdown.</p>
+          <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+            <label class="csv-file-label" for="csv-file-input">
+              📄 Choose CSV file
+            </label>
+            <input type="file" id="csv-file-input" accept=".csv" style="display:none;" />
+            <span id="csv-file-name" style="color:var(--text-muted);font-size:0.85rem;">No file chosen</span>
+            <button class="btn btn-secondary" id="csv-clear-btn" style="display:none;">✕ Clear</button>
+          </div>
+          <div id="csv-msg" style="margin-top:0.75rem;"></div>
+        </div>
+      </div>
+
+      <div id="breakdown-section" class="card breakdown-section hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid var(--border);">
+          <h2 style="margin:0;">📊 Detailed Breakdown</h2>
+          <button class="btn btn-primary" id="bd-download-btn">⬇ Download Report (Excel)</button>
+        </div>
+        <!-- Filter by Date -->
+        <div class="bd-filter">
+          <label>Filter by Date:</label>
+          <div class="bd-date-checks" id="bd-date-checks"></div>
+          <button class="btn btn-secondary" id="bd-select-all-btn" style="font-size:0.8rem;padding:0.3rem 0.75rem;">Deselect All</button>
+        </div>
+        <div class="table-wrapper">
+          <table class="breakdown-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Total Files</th>
+                <th>Uploaded</th>
+                <th>Not Uploaded</th>
+                <th>Uploaded %</th>
+                <th>Not Uploaded %</th>
+                <th>Unique Device Count</th>
+                <th>Reference Count</th>
+                <th>Found Count</th>
+                <th>Found Police IDs</th>
+                <th>Missing Count</th>
+                <th>Missing Police IDs</th>
+              </tr>
+            </thead>
+            <tbody id="breakdown-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- END: CSV Breakdown Feature -->
     </div>
 
     <!-- TAB 2: View All -->
@@ -154,6 +258,66 @@
         </div>
       </div>
     </div>
+
+    <!-- START: Scan Status Tab -->
+    <!-- TAB 3: Scan Status -->
+    <div id="tab-scan" class="tab-panel">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+          <div>
+            <h2 style="margin:0;">⚠️ Duplicate &amp; File Scan Status</h2>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-top:0.3rem;">Scans all files in <code>file/organization/</code> and <code>file/user/</code> for conflicts.</p>
+          </div>
+          <button class="btn btn-primary" id="scan-run-btn">🔍 Run Scan</button>
+        </div>
+        <div id="scan-msg" style="margin-top:0.75rem;"></div>
+      </div>
+
+      <div id="scan-results" class="hidden">
+        <!-- Summary stats -->
+        <div class="card">
+          <h2>Summary</h2>
+          <div class="status-summary-grid" id="scan-stats-grid"></div>
+        </div>
+
+        <!-- Loaded Files -->
+        <div class="card">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;flex-wrap:wrap;">
+            <div class="scan-section">
+              <h3>📁 Organization Files <span id="scan-org-file-count" class="count-badge"></span></h3>
+              <div class="file-list" id="scan-org-files"></div>
+            </div>
+            <div class="scan-section">
+              <h3>📁 User Files <span id="scan-user-file-count" class="count-badge"></span></h3>
+              <div class="file-list" id="scan-user-files"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Duplicate Device IPs -->
+        <div class="card">
+          <h2>🔴 Duplicate Device IPs <span id="scan-dup-ip-count" class="count-badge"></span></h2>
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem;">Same IP address found in more than one organization file. Search will return whichever file is scanned first — this may produce wrong results.</p>
+          <div id="scan-dup-ips"></div>
+        </div>
+
+        <!-- Duplicate User IDs -->
+        <div class="card">
+          <h2>🟠 Duplicate User IDs <span id="scan-dup-uid-count" class="count-badge"></span></h2>
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem;">Same User ID found in more than one user file. The reference count may be inflated.</p>
+          <div id="scan-dup-uids"></div>
+        </div>
+
+        <!-- Parse Errors -->
+        <div class="card" id="scan-errors-card">
+          <h2>❌ File Parse Errors <span id="scan-err-count" class="count-badge"></span></h2>
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem;">These files could not be read. Check they are valid .xlsx/.xls files and not open in another program.</p>
+          <div id="scan-errors"></div>
+        </div>
+      </div>
+    </div>
+    <!-- END: Scan Status Tab -->
+
   </div>
 
   <script>
@@ -303,6 +467,240 @@
       });
     });
 
+    // START: CSV Breakdown Feature - JS
+    const csvFileInput     = document.getElementById('csv-file-input');
+    const csvFileName      = document.getElementById('csv-file-name');
+    const csvMsg           = document.getElementById('csv-msg');
+    const csvClearBtn      = document.getElementById('csv-clear-btn');
+    const breakdownSection = document.getElementById('breakdown-section');
+    const breakdownTbody   = document.getElementById('breakdown-tbody');
+    const bdDateChecks     = document.getElementById('bd-date-checks');
+    const bdSelectAllBtn   = document.getElementById('bd-select-all-btn');
+    const bdDownloadBtn    = document.getElementById('bd-download-btn');
+
+    // State for breakdown
+    let bdAllRows     = [];   // full breakdown data from server
+    let bdSelectedDates = new Set();
+    let bdAllSelected = true;
+    let bdDeviceInfo  = null; // device info from last CSV response
+
+    // IP pattern validator
+    function isValidIp(str) {
+      return /^\d{1,3}(\.\d{1,3}){3}$/.test(str);
+    }
+
+    function showCsvMsg(text, type) {
+      csvMsg.className = 'msg msg-' + type;
+      csvMsg.textContent = text;
+    }
+
+    function renderPills(ids, pillClass) {
+      if (!ids || ids.length === 0) return '<span style="color:var(--text-muted);font-style:italic;">None</span>';
+      return ids.map(id => `<span class="id-pill ${pillClass}">${escapeHtml(id)}</span>`).join('');
+    }
+
+    // Build date filter checkboxes from bdAllRows
+    function bdBuildDateFilters() {
+      bdDateChecks.innerHTML = '';
+      bdSelectedDates.clear();
+      bdAllRows.forEach(r => bdSelectedDates.add(r.date));
+      bdAllSelected = true;
+      bdSelectAllBtn.textContent = 'Deselect All';
+
+      bdAllRows.forEach(r => {
+        const item = document.createElement('label');
+        item.className = 'check-item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = r.date;
+        cb.checked = true;
+        cb.addEventListener('change', () => {
+          if (cb.checked) bdSelectedDates.add(r.date);
+          else bdSelectedDates.delete(r.date);
+          bdRenderTable();
+        });
+        item.appendChild(cb);
+        item.appendChild(document.createTextNode(r.date));
+        bdDateChecks.appendChild(item);
+      });
+    }
+
+    // Toggle all date checkboxes
+    bdSelectAllBtn.addEventListener('click', () => {
+      bdAllSelected = !bdAllSelected;
+      bdDateChecks.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = bdAllSelected;
+        if (bdAllSelected) bdSelectedDates.add(cb.value);
+        else bdSelectedDates.delete(cb.value);
+      });
+      bdSelectAllBtn.textContent = bdAllSelected ? 'Deselect All' : 'Select All';
+      bdRenderTable();
+    });
+
+    // Render the table filtered by selected dates
+    function bdRenderTable() {
+      const filtered = bdAllRows.filter(r => bdSelectedDates.has(r.date));
+      if (!filtered.length) {
+        breakdownTbody.innerHTML = '<tr><td colspan="12" class="no-data">No dates selected.</td></tr>';
+        return;
+      }
+      breakdownTbody.innerHTML = filtered.map(row => {
+        const allOk = row.missingCount === 0;
+        return `<tr class="${allOk ? 'breakdown-row-ok' : 'breakdown-row-miss'}">
+          <td><strong>${escapeHtml(row.date)}</strong></td>
+          <td style="text-align:center;">${row.totalFiles}</td>
+          <td style="text-align:center;">${row.uploaded}</td>
+          <td style="text-align:center;">${row.notUploaded > 0 ? `<span class="badge-miss">${row.notUploaded}</span>` : `<span class="badge-ok">0</span>`}</td>
+          <td style="text-align:center;"><span class="badge-ok">${row.uploadPct}%</span></td>
+          <td style="text-align:center;">${row.notUploaded > 0 ? `<span class="badge-warn">${row.notUpPct}%</span>` : `<span class="badge-ok">0%</span>`}</td>
+          <td style="text-align:center;"><strong>${row.deviceSNCount}</strong></td>
+          <td style="text-align:center;">${row.referenceCount}</td>
+          <td style="text-align:center;"><span class="badge-ok">${row.foundCount}</span></td>
+          <td>${renderPills(row.foundIds, 'pill-found')}</td>
+          <td style="text-align:center;">${row.missingCount > 0 ? `<span class="badge-miss">${row.missingCount}</span>` : `<span class="badge-ok">0</span>`}</td>
+          <td>${renderPills(row.missingIds, 'pill-missing')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function resetCsvBreakdown() {
+      csvFileName.textContent = 'No file chosen';
+      csvMsg.className = '';
+      csvMsg.textContent = '';
+      csvClearBtn.style.display = 'none';
+      breakdownSection.classList.add('hidden');
+      breakdownTbody.innerHTML = '';
+      bdDateChecks.innerHTML = '';
+      bdAllRows = [];
+      bdDeviceInfo = null;
+      csvFileInput.value = '';
+    }
+
+    csvClearBtn.addEventListener('click', resetCsvBreakdown);
+
+    csvFileInput.addEventListener('change', async () => {
+      const file = csvFileInput.files[0];
+      if (!file) return;
+
+      csvFileName.textContent = file.name;
+      csvClearBtn.style.display = 'inline-block';
+      breakdownSection.classList.add('hidden');
+      breakdownTbody.innerHTML = '';
+
+      // Validate filename: must be IP.csv
+      const baseName = file.name.replace(/\.csv$/i, '');
+      if (!isValidIp(baseName)) {
+        showCsvMsg(`❌ Filename "${file.name}" is not a valid IP address format. Expected e.g. 10.4.3.62.csv`, 'error');
+        return;
+      }
+
+      const ip = baseName;
+      showCsvMsg('⏳ Processing...', 'info');
+
+      const formData = new FormData();
+      formData.append('csvFile', file);
+      formData.append('ip', ip);
+
+      try {
+        const res = await fetch('/api/device-csv-breakdown', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Request failed.');
+
+        // Populate the existing search result cards
+        if (data.found && data.device) {
+          const d = data.device;
+          bdDeviceInfo = { ...d, deviceIp: ip };
+          deviceInfo.innerHTML =
+            infoRow('Source File', d.sourceFile, true) +
+            infoRow('Device IP', ip) +
+            infoRow('Device Name', d.deviceName) +
+            infoRow('Organization Code', d.organizationCode) +
+            infoRow('Organization', d.organization);
+
+          const users = data.users || [];
+          userCountBadge.textContent = `(${users.length} user${users.length !== 1 ? 's' : ''})`;
+
+          if (users.length === 0) {
+            userInfo.innerHTML = '<div style="color:var(--text-muted);font-style:italic;font-size:0.9rem;padding:0.5rem 0;">No matching users found in user files.</div>';
+          } else {
+            const byFile = {};
+            users.forEach(u => {
+              if (!byFile[u.sourceFile]) byFile[u.sourceFile] = [];
+              byFile[u.sourceFile].push(u.userId);
+            });
+            let html = '';
+            for (const [f, ids] of Object.entries(byFile)) {
+              html += `<div style="margin-bottom:0.75rem;">
+                <div style="font-size:0.78rem;margin-bottom:0.4rem;"><span class="source-badge">${escapeHtml(f)}</span></div>
+                <div class="uid-list">${ids.map(id => `<span class="uid-tag">${escapeHtml(id)}</span>`).join('')}</div>
+              </div>`;
+            }
+            userInfo.innerHTML = html;
+          }
+
+          const copyBtn = document.getElementById('copy-users-btn');
+          copyBtn.style.display = users.length > 0 ? 'inline-block' : 'none';
+          copyBtn._userIds = (data.users || []).map(u => u.userId).filter(Boolean);
+          searchResults.classList.remove('hidden');
+        } else {
+          bdDeviceInfo = null;
+          searchResults.classList.add('hidden');
+        }
+
+        // Store full breakdown data + build filters
+        const breakdown = data.breakdown || [];
+        if (breakdown.length === 0) {
+          showCsvMsg('⚠️ Device ' + (data.found ? 'found' : 'not found') + ' but no dated rows in CSV.', 'info');
+          return;
+        }
+
+        bdAllRows = breakdown;
+        bdBuildDateFilters();
+        bdRenderTable();
+        breakdownSection.classList.remove('hidden');
+        showCsvMsg(`✅ Done — ${breakdown.length} date(s) analysed for IP: ${ip}`, 'success');
+
+      } catch (err) {
+        showCsvMsg('❌ Error: ' + err.message, 'error');
+      }
+    });
+
+    // Download Excel Report (filtered dates)
+    bdDownloadBtn.addEventListener('click', async () => {
+      const filtered = bdAllRows.filter(r => bdSelectedDates.has(r.date));
+      if (!filtered.length) { alert('No dates selected to download.'); return; }
+
+      bdDownloadBtn.disabled = true;
+      bdDownloadBtn.innerHTML = '<span class="loading-spinner"></span>Generating...';
+
+      try {
+        const res = await fetch('/api/device-breakdown-excel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device: bdDeviceInfo, breakdown: filtered })
+        });
+        if (!res.ok) throw new Error('Server error generating Excel.');
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        // Filename: DeviceName-Organization-IP.xlsx (mirrors server)
+        const safePart = s => String(s || '').replace(/[/\\?%*:|"<>]/g, '-').trim();
+        const dlName = bdDeviceInfo
+          ? `${safePart(bdDeviceInfo.deviceName)}-${safePart(bdDeviceInfo.organization)}-${safePart(bdDeviceInfo.deviceIp)}.xlsx`
+          : `breakdown-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+        a.download = dlName;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Download Error: ' + err.message);
+      } finally {
+        bdDownloadBtn.disabled = false;
+        bdDownloadBtn.textContent = '⬇ Download Report (Excel)';
+      }
+    });
+    // END: CSV Breakdown Feature - JS
+
     // ----- VIEW TAB -----
     const loadViewBtn    = document.getElementById('load-view-btn');
     const viewMsg        = document.getElementById('view-msg');
@@ -352,6 +750,138 @@
         loadViewBtn.textContent = 'Load / Refresh Data';
       }
     });
+
+    // START: Scan Status Feature - JS
+    const scanRunBtn      = document.getElementById('scan-run-btn');
+    const scanMsg         = document.getElementById('scan-msg');
+    const scanResults     = document.getElementById('scan-results');
+    const scanStatsGrid   = document.getElementById('scan-stats-grid');
+    const scanOrgFiles    = document.getElementById('scan-org-files');
+    const scanUserFiles   = document.getElementById('scan-user-files');
+    const scanOrgCount    = document.getElementById('scan-org-file-count');
+    const scanUserCount   = document.getElementById('scan-user-file-count');
+    const scanDupIps      = document.getElementById('scan-dup-ips');
+    const scanDupIpCount  = document.getElementById('scan-dup-ip-count');
+    const scanDupUids     = document.getElementById('scan-dup-uids');
+    const scanDupUidCount = document.getElementById('scan-dup-uid-count');
+    const scanErrors      = document.getElementById('scan-errors');
+    const scanErrCount    = document.getElementById('scan-err-count');
+    const scanErrorsCard  = document.getElementById('scan-errors-card');
+
+    function statCard(num, label, type) {
+      return `<div class="stat-card stat-${type}">
+        <div class="stat-num">${num}</div>
+        <div class="stat-label">${label}</div>
+      </div>`;
+    }
+
+    function renderDupIpBlocks(dups) {
+      if (!dups.length) return '<div class="all-ok-msg">✅ No duplicate Device IPs found.</div>';
+      return dups.map(d => `
+        <div class="dup-block">
+          <div class="dup-key">🔴 IP: ${escapeHtml(d.ip)} — found in ${d.entries.length} files</div>
+          ${d.entries.map(e => `
+            <div class="dup-entry">
+              <span class="source-badge">${escapeHtml(e.sourceFile)}</span>
+              &nbsp;→&nbsp; Device: <strong>${escapeHtml(e.deviceName)}</strong>,
+              Org Code: <strong>${escapeHtml(e.orgCode)}</strong>,
+              Org: <strong>${escapeHtml(e.organization)}</strong>
+            </div>`).join('')}
+        </div>`).join('');
+    }
+
+    function renderDupUidBlocks(dups) {
+      if (!dups.length) return '<div class="all-ok-msg">✅ No duplicate User IDs found.</div>';
+      return dups.map(d => `
+        <div class="dup-block">
+          <div class="dup-key">🟠 User ID: ${escapeHtml(d.userId)} — found in ${d.entries.length} files</div>
+          ${d.entries.map(e => `
+            <div class="dup-entry">
+              <span class="source-badge">${escapeHtml(e.sourceFile)}</span>
+              &nbsp;→&nbsp; Org Code: <strong>${escapeHtml(e.orgCode)}</strong>,
+              Org: <strong>${escapeHtml(e.organization)}</strong>
+            </div>`).join('')}
+        </div>`).join('');
+    }
+
+    function renderErrors(orgErrs, userErrs) {
+      const all = [
+        ...orgErrs.map(e => ({ ...e, type: 'Organization' })),
+        ...userErrs.map(e => ({ ...e, type: 'User' }))
+      ];
+      if (!all.length) return '<div class="all-ok-msg">✅ All files parsed successfully.</div>';
+      return all.map(e => `
+        <div class="err-block">
+          ❌ [${escapeHtml(e.type)}] <span class="source-badge">${escapeHtml(e.file)}</span><br>
+          <span style="font-size:0.8rem;opacity:0.8;">${escapeHtml(e.error)}</span>
+        </div>`).join('');
+    }
+
+    scanRunBtn.addEventListener('click', async () => {
+      scanRunBtn.disabled = true;
+      scanRunBtn.innerHTML = '<span class="loading-spinner"></span>Scanning...';
+      scanMsg.className = '';
+      scanMsg.textContent = '';
+      scanResults.classList.add('hidden');
+
+      try {
+        const res  = await fetch('/api/device-scan-status');
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Scan failed.');
+
+        const s = data.summary;
+
+        // Stats grid
+        const hasIssues = s.duplicateIpCount > 0 || s.duplicateUserIdCount > 0 || s.parseErrorCount > 0;
+        scanStatsGrid.innerHTML =
+          statCard(s.totalOrgFiles,        'Organization Files', 'info') +
+          statCard(s.totalUserFiles,        'User Files',         'info') +
+          statCard(s.totalUniqueIps,        'Unique Device IPs',  'info') +
+          statCard(s.duplicateIpCount,      'Duplicate IPs',      s.duplicateIpCount     > 0 ? 'err'  : 'ok') +
+          statCard(s.duplicateUserIdCount,  'Duplicate User IDs', s.duplicateUserIdCount > 0 ? 'warn' : 'ok') +
+          statCard(s.parseErrorCount,       'Parse Errors',       s.parseErrorCount      > 0 ? 'err'  : 'ok');
+
+        // File lists
+        scanOrgCount.textContent  = `(${data.orgFiles.length})`;
+        scanUserCount.textContent = `(${data.userFiles.length})`;
+        scanOrgFiles.innerHTML    = data.orgFiles.length
+          ? data.orgFiles.map(f => `<span class="source-badge">${escapeHtml(f)}</span>`).join('')
+          : '<span style="color:var(--text-muted);font-style:italic;font-size:0.85rem;">No files found</span>';
+        scanUserFiles.innerHTML   = data.userFiles.length
+          ? data.userFiles.map(f => `<span class="source-badge">${escapeHtml(f)}</span>`).join('')
+          : '<span style="color:var(--text-muted);font-style:italic;font-size:0.85rem;">No files found</span>';
+
+        // Duplicates
+        scanDupIpCount.textContent  = s.duplicateIpCount     > 0 ? `(${s.duplicateIpCount} conflict${s.duplicateIpCount !== 1 ? 's' : ''})` : '';
+        scanDupUidCount.textContent = s.duplicateUserIdCount > 0 ? `(${s.duplicateUserIdCount} conflict${s.duplicateUserIdCount !== 1 ? 's' : ''})` : '';
+        scanDupIps.innerHTML  = renderDupIpBlocks(data.duplicateIps);
+        scanDupUids.innerHTML = renderDupUidBlocks(data.duplicateUserIds);
+
+        // Errors
+        const totalErrors = s.parseErrorCount;
+        scanErrCount.textContent   = totalErrors > 0 ? `(${totalErrors})` : '';
+        scanErrors.innerHTML       = renderErrors(data.orgParseErrors, data.userParseErrors);
+        scanErrorsCard.style.display = totalErrors > 0 ? '' : 'none';
+
+        scanResults.classList.remove('hidden');
+
+        if (!hasIssues) {
+          scanMsg.className   = 'msg msg-success';
+          scanMsg.textContent = '✅ No issues found. All files are clean.';
+        } else {
+          scanMsg.className   = 'msg msg-error';
+          scanMsg.textContent = `⚠️ Issues found: ${s.duplicateIpCount} duplicate IP(s), ${s.duplicateUserIdCount} duplicate User ID(s), ${s.parseErrorCount} parse error(s). See details below.`;
+        }
+
+      } catch (err) {
+        scanMsg.className   = 'msg msg-error';
+        scanMsg.textContent = 'Error: ' + err.message;
+      } finally {
+        scanRunBtn.disabled  = false;
+        scanRunBtn.textContent = '🔍 Run Scan';
+      }
+    });
+    // END: Scan Status Feature - JS
   </script>
 </body>
 </html>
