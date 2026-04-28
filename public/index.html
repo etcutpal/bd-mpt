@@ -22,6 +22,11 @@
     body { background-color: var(--bg); min-height: 100vh; padding: 2rem; color: var(--text-main); line-height: 1.5; }
     .container { max-width: 1100px; margin: 0 auto; }
     h1 { font-size: 2rem; font-weight: 800; color: var(--text-main); margin-bottom: 2rem; text-align: center; letter-spacing: -0.025em; }
+    /* START: Device IP Search Feature - nav link */
+    .feature-nav { text-align: center; margin-bottom: 1.5rem; }
+    .feature-nav a { display: inline-block; color: #2563eb; text-decoration: none; font-weight: 600; font-size: 0.9rem; padding: 0.5rem 1.1rem; border: 1px solid #2563eb; border-radius: 8px; transition: all 0.2s; }
+    .feature-nav a:hover { background: #2563eb; color: #fff; }
+    /* END: Device IP Search Feature - nav link */
     h2 { font-size: 1.25rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem; }
     .card { background: var(--card); padding: 2rem; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); margin-bottom: 1.5rem; }
     #drop-zone { border: 2px dashed var(--border); padding: 3rem 2rem; text-align: center; cursor: pointer; transition: all 0.2s ease; border-radius: 12px; margin-bottom: 1.5rem; color: var(--text-muted); font-weight: 500; background: #fafafa; }
@@ -89,6 +94,11 @@
 <body>
   <div class="container">
     <h1>CSV Upload & Summary App</h1>
+    <!-- START: Device IP Search Feature - nav link -->
+    <div class="feature-nav">
+      <a href="/device-search.html">🔍 Device IP Search &amp; Organization Viewer →</a>
+    </div>
+    <!-- END: Device IP Search Feature - nav link -->
     <div class="card">
       <div id="drop-zone">Drag & Drop CSV here or Click to Upload</div>
       <input type="file" id="file-input" accept=".csv" class="hidden">

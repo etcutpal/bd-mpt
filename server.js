@@ -332,6 +332,150 @@ app.post('/compare-reference', upload.single('referenceFile'), (req, res) => {
   }
 });
 
+// ============================================================
+// START: Device IP Search Feature
+// ============================================================
+
+// Helper: Recursively collect all .xlsx / .xls files under a directory
+function deviceSearch_getAllExcelFiles(dir) {
+  let results = [];
+  if (!fs.existsSync(dir)) return results;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results = results.concat(deviceSearch_getAllExcelFiles(fullPath));
+    } else if (/\.(xlsx|xls)$/i.test(entry.name)) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+// Helper: Parse an Excel file and return rows as array of objects (headers trimmed)
+function deviceSearch_parseExcelFile(filePath) {
+  try {
+    const workbook = XLSX.readFile(filePath);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    // Trim all header keys
+    return rows.map(row => {
+      const cleaned = {};
+      for (const key of Object.keys(row)) cleaned[key.trim()] = String(row[key]).trim();
+      return cleaned;
+    });
+  } catch (e) {
+    console.error(`deviceSearch: Failed to parse ${filePath}:`, e.message);
+    return [];
+  }
+}
+
+const DEVICE_ORG_DIR = path.join(__dirname, 'file', 'organization');
+const DEVICE_USER_DIR = path.join(__dirname, 'file', 'user');
+
+// GET /api/device-search?ip=<Device IP>
+// Searches all org files for the IP, then matches user files by Org Code + Organization
+app.get('/api/device-search', (req, res) => {
+  const searchIp = (req.query.ip || '').trim();
+  if (!searchIp) return res.status(400).json({ success: false, message: 'IP parameter is required.' });
+
+  // --- Scan organization files ---
+  const orgFiles = deviceSearch_getAllExcelFiles(DEVICE_ORG_DIR);
+  let deviceMatch = null;
+
+  for (const filePath of orgFiles) {
+    const rows = deviceSearch_parseExcelFile(filePath);
+    const row = rows.find(r => r['Device IP'] === searchIp);
+    if (row) {
+      deviceMatch = {
+        sourceFile: path.relative(__dirname, filePath).replace(/\\/g, '/'),
+        deviceName: row['Device Name*'] || row['Device Name'] || '',
+        organizationCode: row['Organization Code*'] || row['Organization Code'] || '',
+        organization: row['Organization'] || ''
+      };
+      break;
+    }
+  }
+
+  if (!deviceMatch) {
+    return res.json({ success: true, found: false, message: `No device found with IP: ${searchIp}` });
+  }
+
+  // --- Scan user files and match by Org Code + Organization ---
+  const userFiles = deviceSearch_getAllExcelFiles(DEVICE_USER_DIR);
+  const matchedUsers = [];
+
+  for (const filePath of userFiles) {
+    const rows = deviceSearch_parseExcelFile(filePath);
+    for (const row of rows) {
+      const rowOrgCode = row['Organization Code'] || '';
+      const rowOrg = row['Organization'] || '';
+      if (
+        rowOrgCode === deviceMatch.organizationCode &&
+        rowOrg === deviceMatch.organization
+      ) {
+        matchedUsers.push({
+          userId: row['User ID'] || '',
+          userName: row['User name'] || row['Username'] || '',
+          sourceFile: path.relative(__dirname, filePath).replace(/\\/g, '/')
+        });
+      }
+    }
+  }
+
+  res.json({
+    success: true,
+    found: true,
+    device: deviceMatch,
+    users: matchedUsers
+  });
+});
+
+// GET /api/device-view
+// Returns combined view: each device row + matched user IDs from user files
+app.get('/api/device-view', (req, res) => {
+  const orgFiles = deviceSearch_getAllExcelFiles(DEVICE_ORG_DIR);
+  const userFiles = deviceSearch_getAllExcelFiles(DEVICE_USER_DIR);
+
+  // Parse all user rows once, indexed by "orgCode|organization"
+  const userMap = new Map();
+  for (const filePath of userFiles) {
+    const rows = deviceSearch_parseExcelFile(filePath);
+    for (const row of rows) {
+      const key = `${(row['Organization Code'] || '').toLowerCase()}|${(row['Organization'] || '').toLowerCase()}`;
+      if (!userMap.has(key)) userMap.set(key, []);
+      const uid = row['User ID'] || '';
+      if (uid) userMap.get(key).push(uid);
+    }
+  }
+
+  const results = [];
+  for (const filePath of orgFiles) {
+    const rows = deviceSearch_parseExcelFile(filePath);
+    const relFile = path.relative(__dirname, filePath).replace(/\\/g, '/');
+    for (const row of rows) {
+      const orgCode = row['Organization Code*'] || row['Organization Code'] || '';
+      const org = row['Organization'] || '';
+      const key = `${orgCode.toLowerCase()}|${org.toLowerCase()}`;
+      const userIds = userMap.get(key) || [];
+      results.push({
+        sourceFile: relFile,
+        deviceIp: row['Device IP'] || '',
+        deviceName: row['Device Name*'] || row['Device Name'] || '',
+        organizationCode: orgCode,
+        organization: org,
+        userIds
+      });
+    }
+  }
+
+  res.json({ success: true, rows: results });
+});
+
+// ============================================================
+// END: Device IP Search Feature
+// ============================================================
+
 // Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
