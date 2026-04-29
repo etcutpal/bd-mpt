@@ -8,7 +8,7 @@ const path = require('path');
 const XLSX = require('xlsx-js-style');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5001;
 
 // Middleware
 app.use(session({
@@ -18,7 +18,8 @@ app.use(session({
   cookie: { secure: false } // Set to true if using HTTPS
 }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -370,8 +371,30 @@ function deviceSearch_parseExcelFile(filePath) {
   }
 }
 
-const DEVICE_ORG_DIR = path.join(__dirname, 'file', 'organization');
-const DEVICE_USER_DIR = path.join(__dirname, 'file', 'user');
+const DEVICE_ORG_DIR    = path.join(__dirname, 'file', 'organization');
+const DEVICE_USER_DIR   = path.join(__dirname, 'file', 'user');
+const DEVICE_BANGLA_DIR = path.join(__dirname, 'file', 'bangla');
+
+// Helper: Build a lookup map from file3 (file/bangla/):  ID → { metroRange, district, policeStation, pollingCenter }
+function deviceSearch_buildBanglaIndex() {
+  const index = new Map();
+  const files = deviceSearch_getAllExcelFiles(DEVICE_BANGLA_DIR);
+  for (const filePath of files) {
+    let rows;
+    try { rows = deviceSearch_parseExcelFile(filePath); } catch (e) { continue; }
+    for (const row of rows) {
+      const id = (row['ID'] || '').trim();
+      if (!id || index.has(id)) continue; // use first occurrence
+      index.set(id, {
+        metroRange:    row['Metro/Range']         || '',
+        district:      row['District']            || '',
+        policeStation: row['Police Station']      || '',
+        pollingCenter: row['Polling Center Name'] || ''
+      });
+    }
+  }
+  return index;
+}
 
 // GET /api/device-scan-status
 // Scans both folders and reports duplicate Device IPs and duplicate User IDs
@@ -452,6 +475,7 @@ app.get('/api/device-scan-status', (req, res) => {
       totalOrgFiles:        orgFiles.length,
       totalUserFiles:       userFiles.length,
       totalUniqueIps:       ipIndex.size,
+      totalUniqueUserIds:   userIdIndex.size,
       duplicateIpCount:     duplicateIps.length,
       duplicateUserIdCount: duplicateUserIds.length,
       parseErrorCount:      orgParseErrors.length + userParseErrors.length
@@ -490,6 +514,7 @@ app.get('/api/device-search', (req, res) => {
   // --- Scan user files and match by Org Code + Organization ---
   const userFiles = deviceSearch_getAllExcelFiles(DEVICE_USER_DIR);
   const matchedUsers = [];
+  const referenceUserIds = new Set();
 
   for (const filePath of userFiles) {
     const rows = deviceSearch_parseExcelFile(filePath);
@@ -500,14 +525,37 @@ app.get('/api/device-search', (req, res) => {
         rowOrgCode === deviceMatch.organizationCode &&
         rowOrg === deviceMatch.organization
       ) {
+        const uid = row['User ID'] || '';
+        if (uid) referenceUserIds.add(uid);
         matchedUsers.push({
-          userId: row['User ID'] || '',
+          userId: uid,
           userName: row['User name'] || row['Username'] || '',
           sourceFile: path.relative(__dirname, filePath).replace(/\\/g, '/')
         });
       }
     }
   }
+
+  // --- Enrich device info from bangla index (file3) ---
+  const banglaIndex = deviceSearch_buildBanglaIndex();
+  const metroRangeSet    = new Set();
+  const districtSet      = new Set();
+  const policeStationSet = new Set();
+  const pollingCenterSet = new Set();
+  referenceUserIds.forEach(uid => {
+    const meta = banglaIndex.get(uid);
+    if (meta) {
+      if (meta.metroRange)    metroRangeSet.add(meta.metroRange);
+      if (meta.district)      districtSet.add(meta.district);
+      if (meta.policeStation) policeStationSet.add(meta.policeStation);
+      if (meta.pollingCenter) pollingCenterSet.add(meta.pollingCenter);
+    }
+  });
+  deviceMatch.metroRange    = [...metroRangeSet].join(', ')    || '';
+  deviceMatch.district      = [...districtSet].join(', ')      || '';
+  deviceMatch.policeStation = [...policeStationSet].join(', ') || '';
+  deviceMatch.pollingCenter = [...pollingCenterSet].join(', ') || '';
+  deviceMatch.deviceIp      = searchIp;
 
   res.json({
     success: true,
@@ -634,16 +682,64 @@ app.post('/api/device-csv-breakdown', deviceSearch_csvUpload.single('csvFile'), 
       }
     }
 
+    // Step 4b: Build bangla metadata index and enrich device info
+    const banglaIndex = deviceSearch_buildBanglaIndex();
+
+    // Collect unique Metro/Range, District, Police Station, Polling Center from matched user IDs
+    if (deviceMatch) {
+      const metroRangeSet    = new Set();
+      const districtSet      = new Set();
+      const policeStationSet = new Set();
+      const pollingCenterSet = new Set();
+      referenceUserIds.forEach(uid => {
+        const meta = banglaIndex.get(uid);
+        if (meta) {
+          if (meta.metroRange)    metroRangeSet.add(meta.metroRange);
+          if (meta.district)      districtSet.add(meta.district);
+          if (meta.policeStation) policeStationSet.add(meta.policeStation);
+          if (meta.pollingCenter) pollingCenterSet.add(meta.pollingCenter);
+        }
+      });
+      deviceMatch.metroRange    = [...metroRangeSet].join(', ')    || '';
+      deviceMatch.district      = [...districtSet].join(', ')      || '';
+      deviceMatch.policeStation = [...policeStationSet].join(', ') || '';
+      deviceMatch.pollingCenter = [...pollingCenterSet].join(', ') || '';
+    }
+
     // Step 5: Per-date breakdown — compare CSV police IDs vs reference user IDs
     const breakdown = summaryData.map(dayData => {
       const csvPoliceIds = new Set(dayData.policeIDs);
-      const foundIds = [];
-      const missingIds = [];
 
-      referenceUserIds.forEach(refId => {
-        if (csvPoliceIds.has(refId)) foundIds.push(refId);
-        else missingIds.push(refId);
+      // Found Police IDs = ALL unique IDs actually present in the CSV that day
+      // (matches "Unique Police IDs" from Detailed Breakdown)
+      const foundIds     = [...dayData.policeIDs].sort();
+      const foundDetails = foundIds.map(id => {
+        const meta = banglaIndex.get(id);
+        return {
+          id,
+          detail: meta
+            ? `${meta.metroRange} | ${meta.district} | ${meta.policeStation} | ${meta.pollingCenter}`
+            : ''
+        };
       });
+
+      // Missing Police IDs = reference IDs that did NOT appear in the CSV that day
+      const missingIds     = [];
+      const missingDetails = [];
+      referenceUserIds.forEach(refId => {
+        if (!csvPoliceIds.has(refId)) {
+          const meta = banglaIndex.get(refId);
+          missingIds.push(refId);
+          missingDetails.push({
+            id: refId,
+            detail: meta
+              ? `${meta.metroRange} | ${meta.district} | ${meta.policeStation} | ${meta.pollingCenter}`
+              : ''
+          });
+        }
+      });
+      missingIds.sort();
+      missingDetails.sort((a, b) => a.id.localeCompare(b.id));
 
       const uploadPct  = dayData.totalFiles > 0 ? ((dayData.uploaded    / dayData.totalFiles) * 100).toFixed(1) : '0.0';
       const notUpPct   = dayData.totalFiles > 0 ? ((dayData.notUploaded / dayData.totalFiles) * 100).toFixed(1) : '0.0';
@@ -659,10 +755,12 @@ app.post('/api/device-csv-breakdown', deviceSearch_csvUpload.single('csvFile'), 
         deviceSNs:     dayData.deviceSNs || [],
         referenceCount: referenceUserIds.size,
         uploadedCount:  dayData.uniquePoliceIDCount,
-        foundIds:       foundIds.sort(),
+        foundIds,
         foundCount:     foundIds.length,
-        missingIds:     missingIds.sort(),
-        missingCount:   missingIds.length
+        foundDetails,
+        missingIds,
+        missingCount:   missingIds.length,
+        missingDetails
       };
     });
 
@@ -689,9 +787,7 @@ app.post('/api/device-breakdown-excel', (req, res) => {
   const thin = { style: 'thin', color: { rgb: '000000' } };
   const bord = { top: thin, bottom: thin, left: thin, right: thin };
 
-  // Helpers
-  const NUM_COLS = 13; // total columns A–M
-  const colCount = NUM_COLS;
+  // Helpers — NUM_COLS and colCount are set after headers array is defined below
 
   function setCell(ws, r, c, value, style) {
     const addr = XLSX.utils.encode_cell({ r, c });
@@ -732,6 +828,8 @@ app.post('/api/device-breakdown-excel', (req, res) => {
 
   const merges = [];
   let R = 0;
+  const NUM_COLS = 13; // total columns A–M
+  const colCount = NUM_COLS;
 
   // ── Row 0: "DEVICE INFORMATION" merged header ─────────────────────────────
   setCell(ws, R, 0, 'DEVICE INFORMATION', headerStyle('2563EB'));
@@ -739,12 +837,15 @@ app.post('/api/device-breakdown-excel', (req, res) => {
   merges.push({ s: { r: R, c: 0 }, e: { r: R, c: colCount - 1 } });
   R++;
 
-  // ── Rows 1-5: Device info key/value pairs ────────────────────────────────
+  // ── Rows: Device info key/value pairs ───────────────────────────────────
   const devFields = [
     ['Device IP',         device ? device.deviceIp || ''           : ''],
     ['Device Name',       device ? device.deviceName || ''         : ''],
     ['Organization Code', device ? device.organizationCode || ''   : ''],
     ['Organization',      device ? device.organization || ''       : ''],
+    ['Metro/Range',       device ? device.metroRange || ''         : ''],
+    ['District',          device ? device.district || ''           : ''],
+    ['Police Station',    device ? device.policeStation || ''      : ''],
   ];
   devFields.forEach(([label, val]) => {
     setCell(ws, R, 0, label, labelStyle());
@@ -812,12 +913,102 @@ app.post('/api/device-breakdown-excel', (req, res) => {
   XLSX.utils.book_append_sheet(wb, ws, 'Breakdown Report');
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-  // Filename: DeviceName-Organization-IP.xlsx
-  const safeName = (s) => String(s || '').replace(/[/\\?%*:|"<>]/g, '-').trim();
-  const devName  = safeName(device ? device.deviceName       : 'Device');
-  const org      = safeName(device ? device.organization     : 'Org');
-  const ip       = safeName(device ? device.deviceIp         : 'IP');
-  const filename = `${devName}-${org}-${ip}.xlsx`;
+  // Filename: MetroRange-District-PoliceStation-DeviceName-Organization-IP.xlsx
+  // Bengali fields kept as-is in the Unicode filename (RFC 5987 encoding for the header)
+  const safeSegment = (s) => String(s || '')
+    .replace(/[/\\?%*:|"<>]/g, '-')   // remove chars invalid in filenames
+    .replace(/\s+/g, ' ')
+    .trim();
+  const fnMetro   = safeSegment(device ? device.metroRange    : '');
+  const fnDistr   = safeSegment(device ? device.district      : '');
+  const fnPolice  = safeSegment(device ? device.policeStation : '');
+  const fnDev     = safeSegment(device ? device.deviceName    : 'Device');
+  const fnOrg     = safeSegment(device ? device.organization  : 'Org');
+  const fnIp      = safeSegment(device ? device.deviceIp      : 'IP');
+  const filenameParts = [fnMetro, fnDistr, fnPolice, fnDev, fnOrg, fnIp].filter(Boolean);
+  const filename      = `${filenameParts.join('-')}.xlsx`;
+
+  // ASCII fallback for older clients; filename* carries the full Unicode name
+  const filenameAscii = filename.replace(/[^\x20-\x7E]/g, '_');
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${filenameAscii}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+  res.send(buffer);
+});
+
+// POST /api/device-scan-duplicate-userids-excel
+// Generates an Excel report of all duplicate User IDs found in user files
+app.post('/api/device-scan-duplicate-userids-excel', (req, res) => {
+  const { duplicateUserIds } = req.body || {};
+  if (!duplicateUserIds || !duplicateUserIds.length) {
+    return res.status(400).json({ success: false, message: 'No duplicate User ID data provided.' });
+  }
+
+  const wb   = XLSX.utils.book_new();
+  const ws   = {};
+  const thin = { style: 'thin', color: { rgb: '000000' } };
+  const bord = { top: thin, bottom: thin, left: thin, right: thin };
+
+  function setCell(r, c, value, style) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    ws[addr] = { v: value, s: style || {}, t: typeof value === 'number' ? 'n' : 's' };
+  }
+
+  const hdrStyle = {
+    font: { bold: true },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: bord
+  };
+  const labelStyle = { font: { bold: true }, alignment: { vertical: 'center' }, border: bord };
+  const cellStyle  = { alignment: { vertical: 'center', wrapText: true }, border: bord };
+  const numStyle   = { alignment: { horizontal: 'center', vertical: 'center' }, border: bord };
+
+  let R = 0;
+  const NUM_COLS = 4;
+
+  // ── Title row ─────────────────────────────────────────────────────────────
+  setCell(R, 0, 'DUPLICATE USER IDs REPORT', hdrStyle);
+  for (let c = 1; c < NUM_COLS; c++) setCell(R, c, '', hdrStyle);
+  const merges = [{ s: { r: R, c: 0 }, e: { r: R, c: NUM_COLS - 1 } }];
+  R++;
+
+  // ── Sub-header: scan date ─────────────────────────────────────────────────
+  const scanDate = new Date().toLocaleString();
+  setCell(R, 0, `Scanned: ${scanDate}`, { alignment: { vertical: 'center' }, border: bord });
+  for (let c = 1; c < NUM_COLS; c++) setCell(R, c, '', { border: bord });
+  merges.push({ s: { r: R, c: 0 }, e: { r: R, c: NUM_COLS - 1 } });
+  R++;
+
+  // ── Blank row ─────────────────────────────────────────────────────────────
+  for (let c = 0; c < NUM_COLS; c++) setCell(R, c, '', {});
+  R++;
+
+  // ── Column headers ────────────────────────────────────────────────────────
+  ['User ID', 'Found In (Files)', 'Org Code', 'Organization'].forEach((h, c) => setCell(R, c, h, hdrStyle));
+  R++;
+
+  // ── Data rows ─────────────────────────────────────────────────────────────
+  duplicateUserIds.forEach(({ userId, entries }) => {
+    const files = entries.map(e => e.sourceFile.replace(/^file\/user\//i, '')).join('\n');
+    const codes = entries.map(e => e.orgCode).join('\n');
+    const orgs  = entries.map(e => e.organization).join('\n');
+    setCell(R, 0, userId,        labelStyle);
+    setCell(R, 1, files,         { ...cellStyle, alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(R, 2, codes,         { ...cellStyle, alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(R, 3, orgs,          { ...cellStyle, alignment: { vertical: 'top', wrapText: true }, border: bord });
+    R++;
+  });
+
+  ws['!ref']    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: NUM_COLS - 1 } });
+  ws['!merges'] = merges;
+  ws['!cols']   = [{ wch: 18 }, { wch: 55 }, { wch: 14 }, { wch: 22 }];
+  ws['!rows']   = Array.from({ length: R }, () => ({ hpt: 18 }));
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Duplicate User IDs');
+  const buffer   = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const dateStr  = new Date().toISOString().split('T')[0];
+  const filename = `Duplicate-UserIDs-${dateStr}.xlsx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
