@@ -219,7 +219,10 @@
                 <th>Found Count</th>
                 <th>Found Police IDs</th>
                 <th>Missing Count</th>
+                <th>Zero Count</th>
+                <th>Outside Count</th>
                 <th>Missing Police IDs</th>
+                <th>Outside Police IDs</th>
               </tr>
             </thead>
             <tbody id="breakdown-tbody"></tbody>
@@ -388,6 +391,7 @@
 
         // Device Info
         const d = data.device;
+        bdDeviceInfo = { ...d, deviceIp: ip }; // keep in sync with Device Info card
         deviceInfo.innerHTML =
           infoRow('Source File', d.sourceFile, true) +
           infoRow('Device IP', ip) +
@@ -547,7 +551,7 @@
     function bdRenderTable() {
       const filtered = bdAllRows.filter(r => bdSelectedDates.has(r.date));
       if (!filtered.length) {
-        breakdownTbody.innerHTML = '<tr><td colspan="12" class="no-data">No dates selected.</td></tr>';
+        breakdownTbody.innerHTML = '<tr><td colspan="15" class="no-data">No dates selected.</td></tr>';
         return;
       }
       breakdownTbody.innerHTML = filtered.map(row => {
@@ -564,7 +568,10 @@
           <td style="text-align:center;"><span class="badge-ok">${row.foundCount}</span></td>
           <td>${renderPills(row.foundIds, 'pill-found')}</td>
           <td style="text-align:center;">${row.missingCount > 0 ? `<span class="badge-miss">${row.missingCount}</span>` : `<span class="badge-ok">0</span>`}</td>
+          <td style="text-align:center;">${row.zeroCount > 0 ? `<span class="badge-warn">${row.zeroCount}</span>` : `<span class="badge-ok">0</span>`}</td>
+          <td style="text-align:center;">${row.outsiderCount > 0 ? `<span class="badge-warn">${row.outsiderCount}</span>` : `<span class="badge-ok">0</span>`}</td>
           <td>${renderPills(row.missingIds, 'pill-missing')}</td>
+          <td>${renderPills(row.outsiderIds, 'pill-found')}</td>
         </tr>`;
       }).join('');
     }

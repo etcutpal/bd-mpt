@@ -49,7 +49,8 @@ function generateSummary(rows) {
         uploaded: 0,
         notUploaded: 0,
         policeIDs: new Set(),
-        deviceSNs: new Set()
+        deviceSNs: new Set(),
+        zeroDeviceSNs: new Set()
       });
     }
 
@@ -65,6 +66,7 @@ function generateSummary(rows) {
 
     const dsn = row['Device SN']?.trim();
     if (dsn) d.deviceSNs.add(dsn);
+    if (pid === '000000' && dsn) d.zeroDeviceSNs.add(dsn);
   }
 
   return Array.from(dateMap.entries())
@@ -75,6 +77,7 @@ function generateSummary(rows) {
       notUploaded: data.notUploaded,
       uniquePoliceIDCount: data.policeIDs.size,
       uniqueDeviceSNCount: data.deviceSNs.size,
+      zeroDeviceCount: data.zeroDeviceSNs.size,
       policeIDs: Array.from(data.policeIDs).sort(),
       deviceSNs: Array.from(data.deviceSNs).sort()
     }))
@@ -710,9 +713,9 @@ app.post('/api/device-csv-breakdown', deviceSearch_csvUpload.single('csvFile'), 
     const breakdown = summaryData.map(dayData => {
       const csvPoliceIds = new Set(dayData.policeIDs);
 
-      // Found Police IDs = ALL unique IDs actually present in the CSV that day
-      // (matches "Unique Police IDs" from Detailed Breakdown)
-      const foundIds     = [...dayData.policeIDs].sort();
+      // Found Police IDs = reference IDs that ARE present in the CSV that day
+      // This ensures: Found Count + Missing Count = Reference Count
+      const foundIds     = [...referenceUserIds].filter(id => csvPoliceIds.has(id)).sort();
       const foundDetails = foundIds.map(id => {
         const meta = banglaIndex.get(id);
         return {
@@ -741,6 +744,8 @@ app.post('/api/device-csv-breakdown', deviceSearch_csvUpload.single('csvFile'), 
       missingIds.sort();
       missingDetails.sort((a, b) => a.id.localeCompare(b.id));
 
+      const outsiderIds = [...csvPoliceIds].filter(id => id !== '000000' && !referenceUserIds.has(id)).sort();
+
       const uploadPct  = dayData.totalFiles > 0 ? ((dayData.uploaded    / dayData.totalFiles) * 100).toFixed(1) : '0.0';
       const notUpPct   = dayData.totalFiles > 0 ? ((dayData.notUploaded / dayData.totalFiles) * 100).toFixed(1) : '0.0';
 
@@ -760,7 +765,10 @@ app.post('/api/device-csv-breakdown', deviceSearch_csvUpload.single('csvFile'), 
         foundDetails,
         missingIds,
         missingCount:   missingIds.length,
-        missingDetails
+        missingDetails,
+        zeroCount:      dayData.zeroDeviceCount,
+        outsiderIds,
+        outsiderCount:  outsiderIds.length
       };
     });
 
@@ -828,7 +836,7 @@ app.post('/api/device-breakdown-excel', (req, res) => {
 
   const merges = [];
   let R = 0;
-  const NUM_COLS = 13; // total columns A–M
+  const NUM_COLS = 16; // total columns A–P
   const colCount = NUM_COLS;
 
   // ── Row 0: "DEVICE INFORMATION" merged header ─────────────────────────────
@@ -869,32 +877,36 @@ app.post('/api/device-breakdown-excel', (req, res) => {
   const headers = [
     'Date', 'Total Files', 'Uploaded', 'Not Uploaded',
     'Uploaded %', 'Not Uploaded %',
-    'Reference Count', 'Found Count', 'Missing Count',
+    'Reference Count', 'Found Count', 'Missing Count', 'Zero Count', 'Outside Count',
     'Unique Device Count', 'Found Police IDs',
-    'Missing Police IDs', 'Unique Device SNs'
+    'Missing Police IDs', 'Outside Police IDs', 'Unique Device SNs'
   ];
   headers.forEach((h, c) => setCell(ws, R, c, h, headerStyle('475569')));
   R++;
 
   // ── Data rows ─────────────────────────────────────────────────────────────
   breakdown.forEach(row => {
-    const snText      = (row.deviceSNs   || []).join(', ');
-    const foundText   = (row.foundIds    || []).join(', ');
-    const missingText = (row.missingIds  || []).join(', ');
+    const snText       = (row.deviceSNs    || []).join(', ');
+    const foundText    = (row.foundIds     || []).join(', ');
+    const missingText  = (row.missingIds   || []).join(', ');
+    const outsideText  = (row.outsiderIds  || []).join(', ');
 
-    setCell(ws, R, 0,  row.date,             { font: { bold: true }, alignment: { vertical: 'center' }, border: bord });
-    setCell(ws, R, 1,  row.totalFiles,       numStyle());
-    setCell(ws, R, 2,  row.uploaded,         numStyle());
-    setCell(ws, R, 3,  row.notUploaded,      numStyle());
-    setCell(ws, R, 4,  row.uploadPct + '%',  numStyle());
-    setCell(ws, R, 5,  row.notUpPct  + '%',  numStyle());
-    setCell(ws, R, 6,  row.referenceCount,   numStyle());
-    setCell(ws, R, 7,  row.foundCount,       numStyle());
-    setCell(ws, R, 8,  row.missingCount,     numStyle());
-    setCell(ws, R, 9,  row.deviceSNCount,    numStyle());
-    setCell(ws, R, 10, foundText,            { alignment: { vertical: 'top', wrapText: true }, border: bord });
-    setCell(ws, R, 11, missingText,          { alignment: { vertical: 'top', wrapText: true }, border: bord });
-    setCell(ws, R, 12, snText,               { alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(ws, R, 0,  row.date,                   { font: { bold: true }, alignment: { vertical: 'center' }, border: bord });
+    setCell(ws, R, 1,  row.totalFiles,              numStyle());
+    setCell(ws, R, 2,  row.uploaded,                numStyle());
+    setCell(ws, R, 3,  row.notUploaded,             numStyle());
+    setCell(ws, R, 4,  row.uploadPct + '%',         numStyle());
+    setCell(ws, R, 5,  row.notUpPct  + '%',         numStyle());
+    setCell(ws, R, 6,  row.referenceCount,          numStyle());
+    setCell(ws, R, 7,  row.foundCount,              numStyle());
+    setCell(ws, R, 8,  row.missingCount,            numStyle());
+    setCell(ws, R, 9,  row.zeroCount || 0,          numStyle());
+    setCell(ws, R, 10, row.outsiderCount || 0,      numStyle());
+    setCell(ws, R, 11, row.deviceSNCount,           numStyle());
+    setCell(ws, R, 12, foundText,                   { alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(ws, R, 13, missingText,                 { alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(ws, R, 14, outsideText,                 { alignment: { vertical: 'top', wrapText: true }, border: bord });
+    setCell(ws, R, 15, snText,                      { alignment: { vertical: 'top', wrapText: true }, border: bord });
     R++;
   });
 
@@ -904,7 +916,7 @@ app.post('/api/device-breakdown-excel', (req, res) => {
   ws['!cols'] = [
     { wch: 14 }, { wch: 12 }, { wch: 11 }, { wch: 13 },
     { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 13 },
-    { wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 28 }, { wch: 30 }
+    { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 30 }
   ];
   // Set row heights for data rows to accommodate wrapped IDs
   ws['!rows'] = [];
