@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Upload Filter</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --success-hover: #15803d;
+      --warning: #d97706;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); min-height: 100vh; padding: 2rem; color: var(--text-main); }
+    .container { max-width: 1300px; margin: 0 auto; }
+
+    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+    .top-bar h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.025em; }
+    .back-link { color: var(--primary); text-decoration: none; font-weight: 600; font-size: 0.9rem; padding: 0.5rem 1rem; border: 1px solid var(--primary); border-radius: 8px; transition: all 0.2s; }
+    .back-link:hover { background: var(--primary); color: #fff; }
+
+    .card { background: var(--card); padding: 1.75rem; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+
+    /* Drop zone */
+    .drop-zone { border: 2px dashed var(--border); padding: 3rem 2rem; text-align: center; cursor: pointer; transition: all 0.2s; border-radius: 12px; color: var(--text-muted); font-weight: 500; background: #fafafa; }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: #f0f7ff; color: var(--primary); }
+    .drop-zone p { margin-top: 0.5rem; font-size: 0.85rem; opacity: 0.7; }
+    .drop-zone .icon { font-size: 2.5rem; display: block; margin-bottom: 0.75rem; }
+
+    .file-info { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; margin-top: 1rem; font-size: 0.9rem; }
+    .file-info .file-name { font-weight: 600; color: #166534; }
+    .file-info .file-size { color: var(--text-muted); }
+
+    /* Buttons */
+    .btn { padding: 0.65rem 1.4rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.45rem; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: var(--success-hover); }
+    .btn-outline { background: transparent; color: var(--primary); border: 1.5px solid var(--primary); }
+    .btn-outline:hover { background: var(--primary); color: #fff; }
+    .btn-sm { padding: 0.45rem 0.9rem; font-size: 0.82rem; }
+
+    /* Messages */
+    .msg { padding: 0.8rem 1rem; border-radius: 8px; font-size: 0.9rem; margin-top: 1rem; }
+    .msg-error { background: #fee2e2; color: #991b1b; }
+    .msg-info { background: #dbeafe; color: #1e40af; }
+
+    /* Stats bar */
+    .stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; text-align: center; }
+    .stat-card .stat-num { font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 0.3rem; }
+    .stat-card .stat-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .stat-total .stat-num { color: var(--primary); }
+    .stat-uploaded .stat-num { color: var(--success); }
+    .stat-not-uploaded .stat-num { color: #dc2626; }
+
+    /* Results grid */
+    .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 900px) { .results-grid { grid-template-columns: 1fr; } }
+
+    .result-panel { background: var(--card); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+    .panel-header { padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+    .panel-header-uploaded { background: #f0fdf4; border-bottom: 1px solid #bbf7d0; }
+    .panel-header-not-uploaded { background: #fff1f2; border-bottom: 1px solid #fecdd3; }
+    .panel-title { font-size: 1rem; font-weight: 700; }
+    .panel-title-uploaded { color: #166534; }
+    .panel-title-not-uploaded { color: #991b1b; }
+    .count-pill { font-size: 0.78rem; font-weight: 700; padding: 0.25rem 0.65rem; border-radius: 20px; }
+    .pill-uploaded { background: #dcfce7; color: #166534; }
+    .pill-not-uploaded { background: #fee2e2; color: #991b1b; }
+
+    /* Search within panel */
+    .panel-search { padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border); background: #fafafa; }
+    .panel-search input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 7px; font-size: 0.875rem; outline: none; transition: border-color 0.2s; }
+    .panel-search input:focus { border-color: var(--primary); }
+
+    .table-wrapper { overflow-y: auto; max-height: 450px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { background: #f1f5f9; color: var(--text-muted); text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em; padding: 0.65rem 0.875rem; text-align: left; white-space: nowrap; border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 1; }
+    td { padding: 0.6rem 0.875rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tbody tr:hover { background: #f8fafc; }
+    .no-data { text-align: center; color: var(--text-muted); padding: 3rem; font-style: italic; }
+    .serial-col { width: 50px; color: var(--text-muted); font-size: 0.8rem; }
+
+    /* Download bar */
+    .download-bar { padding: 1rem 1.25rem; border-top: 1px solid var(--border); background: #fafafa; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+    .download-bar span { font-size: 0.82rem; color: var(--text-muted); }
+
+    /* Global download */
+    .global-download { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+
+    /* Issues panel */
+    .issues-panel { background: var(--card); border-radius: 16px; border: 1px solid #fed7aa; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 1.5rem; }
+    .issues-panel-header { padding: 1rem 1.25rem; background: #fff7ed; border-bottom: 1px solid #fed7aa; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+    .issues-panel-header:hover { background: #ffedd5; }
+    .issues-panel-title { font-size: 1rem; font-weight: 700; color: #92400e; display: flex; align-items: center; gap: 0.5rem; }
+    .issues-count-pill { font-size: 0.78rem; font-weight: 700; padding: 0.25rem 0.65rem; border-radius: 20px; background: #fde68a; color: #92400e; }
+    .issues-chevron { font-size: 0.8rem; color: #92400e; transition: transform 0.2s; }
+    .issues-chevron.open { transform: rotate(180deg); }
+    .issues-body { display: none; }
+    .issues-body.open { display: block; }
+    .stat-issues .stat-num { color: var(--warning); }
+    .issue-type-badge { display: inline-block; padding: 0.18rem 0.55rem; border-radius: 5px; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+    .badge-dup-id     { background: #fef3c7; color: #92400e; }
+    .badge-dup-name   { background: #ede9fe; color: #5b21b6; }
+    .badge-dup-upload { background: #fee2e2; color: #991b1b; }
+    .issues-detail    { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; }
+    .issues-value     { font-weight: 600; font-family: monospace; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-bar">
+      <h1>👤 User Upload Filter</h1>
+      <a href="/" class="back-link">← Back to Main App</a>
+    </div>
+
+    <!-- Upload Card -->
+    <div class="card">
+      <h2 style="font-size:1.1rem; font-weight:700; margin-bottom:1rem;">Upload Excel File</h2>
+      <p style="font-size:0.875rem; color:var(--text-muted); margin-bottom:1rem;">
+        The file must contain columns: <strong>User ID*</strong>, <strong>User name*</strong>, <strong>Uploaded User ID</strong>, <strong>Uploaded User name</strong>.
+      </p>
+
+      <div class="drop-zone" id="drop-zone">
+        <span class="icon">📂</span>
+        <strong>Drag &amp; Drop Excel file here</strong>
+        <p>or click to browse (.xlsx, .xls)</p>
+      </div>
+      <input type="file" id="file-input" accept=".xlsx,.xls" class="hidden">
+
+      <div id="file-info-bar" class="hidden"></div>
+      <div id="upload-msg" class="hidden"></div>
+      <div id="debug-info" class="hidden" style="margin-top:0.75rem; padding:0.75rem 1rem; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:0.82rem; color:#78350f;"></div>
+
+      <div style="margin-top:1rem; display:flex; gap:0.75rem; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="process-btn" disabled>Process File</button>
+        <button class="btn btn-outline" id="reset-btn">Reset</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-section" class="hidden">
+      <!-- Stats -->
+      <div class="stats-bar" id="stats-bar"></div>
+
+      <!-- Global Download -->
+      <div class="card" style="padding:1rem 1.5rem;">
+        <div class="global-download">
+          <span style="font-weight:600; font-size:0.9rem;">Download All:</span>
+          <button class="btn btn-success btn-sm" id="dl-all-btn">⬇ Download Both Lists (Excel)</button>
+          <button class="btn btn-outline btn-sm" id="dl-not-uploaded-btn">⬇ Not Uploaded List</button>
+          <button class="btn btn-outline btn-sm" id="dl-uploaded-btn">⬇ Uploaded List</button>
+        </div>
+      </div>
+
+      <!-- Issues Panel -->
+      <div class="issues-panel" id="issues-panel">
+        <div class="issues-panel-header" id="issues-toggle">
+          <span class="issues-panel-title">⚠️ Data Issues <span class="issues-count-pill" id="issues-count-pill">0</span></span>
+          <span class="issues-chevron" id="issues-chevron">▼</span>
+        </div>
+        <div class="issues-body" id="issues-body">
+          <div class="panel-search">
+            <input type="text" id="search-issues" placeholder="Search by issue type, value or detail…">
+          </div>
+          <div class="table-wrapper" style="max-height:360px;">
+            <table>
+              <thead>
+                <tr>
+                  <th class="serial-col">#</th>
+                  <th>Issue Type</th>
+                  <th>Value</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-issues"></tbody>
+            </table>
+          </div>
+          <div class="download-bar">
+            <span id="visible-count-issues"></span>
+            <button class="btn btn-outline btn-sm" id="dl-issues-btn">⬇ Download Issues List</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two panels -->
+      <div class="results-grid">
+        <!-- Panel: Not Uploaded -->
+        <div class="result-panel">
+          <div class="panel-header panel-header-not-uploaded">
+            <span class="panel-title panel-title-not-uploaded">🔴 Not Uploaded</span>
+            <span class="count-pill pill-not-uploaded" id="count-not-uploaded">0 users</span>
+          </div>
+          <div class="panel-search">
+            <input type="text" id="search-not-uploaded" placeholder="Search by ID or Name…">
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th class="serial-col">#</th>
+                  <th>User ID*</th>
+                  <th>User Name*</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-not-uploaded"></tbody>
+            </table>
+          </div>
+          <div class="download-bar">
+            <span id="visible-count-not-uploaded"></span>
+          </div>
+        </div>
+
+        <!-- Panel: Uploaded -->
+        <div class="result-panel">
+          <div class="panel-header panel-header-uploaded">
+            <span class="panel-title panel-title-uploaded">🟢 Uploaded</span>
+            <span class="count-pill pill-uploaded" id="count-uploaded">0 users</span>
+          </div>
+          <div class="panel-search">
+            <input type="text" id="search-uploaded" placeholder="Search by ID or Name…">
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th class="serial-col">#</th>
+                  <th>User ID*</th>
+                  <th>User Name*</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-uploaded"></tbody>
+            </table>
+          </div>
+          <div class="download-bar">
+            <span id="visible-count-uploaded"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────────
+    let allUsers = [];       // { id, name }
+    let uploadedSet = new Set(); // uploaded user IDs (normalised)
+    let notUploadedList = [];
+    let uploadedList = [];
+    let issuesList = [];     // { type, badgeClass, value, detail }
+
+    // ── DOM refs ───────────────────────────────────────────────────────────────
+    const dropZone      = document.getElementById('drop-zone');
+    const fileInput     = document.getElementById('file-input');
+    const fileInfoBar   = document.getElementById('file-info-bar');
+    const uploadMsg     = document.getElementById('upload-msg');
+    const processBtn    = document.getElementById('process-btn');
+    const resetBtn      = document.getElementById('reset-btn');
+    const resultsSection = document.getElementById('results-section');
+
+    // ── Drag & Drop ────────────────────────────────────────────────────────────
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if (f) handleFileSelect(f);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFileSelect(fileInput.files[0]);
+    });
+
+    function handleFileSelect(file) {
+      if (!file.name.match(/\.(xlsx|xls)$/i)) {
+        showMsg('Please select a valid Excel file (.xlsx or .xls).', 'error');
+        return;
+      }
+      clearMsg();
+      fileInfoBar.innerHTML = `
+        <div class="file-info">
+          <span>📄</span>
+          <span class="file-name">${escHtml(file.name)}</span>
+          <span class="file-size">(${(file.size / 1024).toFixed(1)} KB)</span>
+        </div>`;
+      fileInfoBar.classList.remove('hidden');
+      processBtn.disabled = false;
+      processBtn._file = file;
+    }
+
+    // ── Process ────────────────────────────────────────────────────────────────
+    processBtn.addEventListener('click', () => {
+      const file = processBtn._file;
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => parseExcel(e.target.result);
+      reader.onerror = () => showMsg('Failed to read the file.', 'error');
+      reader.readAsArrayBuffer(file);
+    });
+
+    // Return a canonical string key for a value
+    function normalise(val) {
+      return String(val ?? '').trim().toLowerCase();
+    }
+
+    // Return multiple normalised variants to handle number/string mismatches
+    // e.g. "00123" → ["00123", "123"] and 123 → ["123", "00123" is not needed]
+    function normVariants(val) {
+      const s = String(val ?? '').trim();
+      const variants = new Set();
+      variants.add(s.toLowerCase());
+      // If the value looks like a number, also store without leading zeros
+      if (/^\d+$/.test(s)) {
+        variants.add(String(parseInt(s, 10)));
+      }
+      // If the value is a number type stored without leading zeros,
+      // we can't recover the original leading zeros, so just add as-is.
+      return variants;
+    }
+
+    function isInUploadedSet(user) {
+      for (const v of normVariants(user.id)) {
+        if (uploadedSet.has(v)) return true;
+      }
+      return false;
+    }
+
+    function parseExcel(buffer) {
+      let wb;
+      try {
+        wb = XLSX.read(buffer, { type: 'array' });
+      } catch (_) {
+        showMsg('Could not parse the Excel file. Please check the file format.', 'error');
+        return;
+      }
+
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      if (!rows.length) {
+        showMsg('The Excel sheet is empty.', 'error');
+        return;
+      }
+
+      // Detect column names (case-insensitive, trimmed)
+      const colMap = detectColumns(Object.keys(rows[0]));
+      const missing = [];
+      if (!colMap.userId)         missing.push('"User ID*"');
+      if (!colMap.userName)       missing.push('"User name*"');
+      if (!colMap.uploadedUserId) missing.push('"Uploaded User ID"');
+      if (missing.length) {
+        showMsg(`Missing required columns: ${missing.join(', ')}. Please check the file.`, 'error');
+        return;
+      }
+
+      // Build uploaded set from "Uploaded User ID" column
+      uploadedSet.clear();
+      rows.forEach(row => {
+        const s = String(row[colMap.uploadedUserId] ?? '').trim();
+        if (!s) return;
+        normVariants(s).forEach(v => { if (v) uploadedSet.add(v); });
+      });
+
+      // Build all-users list (unique by User ID*)
+      const seen = new Set();
+      allUsers = [];
+      rows.forEach(row => {
+        const id   = String(row[colMap.userId]   ?? '').trim();
+        const name = String(row[colMap.userName] ?? '').trim();
+        if (!id) return;
+        const key = normalise(id);
+        if (!seen.has(key)) {
+          seen.add(key);
+          allUsers.push({ id, name });
+        }
+      });
+
+      if (!allUsers.length) {
+        showMsg('No user entries found in the "User ID*" column.', 'error');
+        return;
+      }
+
+      // Split into two lists
+      notUploadedList = allUsers.filter(u => !isInUploadedSet(u));
+      uploadedList    = allUsers.filter(u =>  isInUploadedSet(u));
+
+      // Detect data issues
+      issuesList = detectIssues(rows, colMap);
+
+      // Debug info
+      showDebug(colMap, rows);
+
+      clearMsg();
+      renderResults();
+    }
+
+    function detectColumns(headers) {
+      const map = {};
+      headers.forEach(h => {
+        // Strip asterisks and normalise whitespace for flexible matching
+        const norm = h.trim().toLowerCase().replace(/[*]/g, '').replace(/\s+/g, ' ').trim();
+
+        // Uploaded columns must be matched FIRST to avoid confusion with plain "user id"
+        if (!map.uploadedUserId &&
+            norm.includes('upload') && norm.includes('id') && !norm.includes('name')) {
+          map.uploadedUserId = h;
+          return;
+        }
+        if (!map.uploadedUserName &&
+            norm.includes('upload') && norm.includes('name')) {
+          map.uploadedUserName = h;
+          return;
+        }
+
+        if (!map.userId   && (norm === 'user id' || norm === 'userid')) map.userId = h;
+        if (!map.userName && (norm === 'user name' || norm === 'username' || norm === 'name')) map.userName = h;
+      });
+      return map;
+    }
+
+    // ── Data Issues Detection ──────────────────────────────────────────────────
+    function detectIssues(rows, colMap) {
+      const issues = [];
+
+      // 1. Same User ID* with multiple different User name*
+      const idToNames = new Map();
+      rows.forEach(row => {
+        const id   = String(row[colMap.userId]   ?? '').trim();
+        const name = String(row[colMap.userName] ?? '').trim();
+        if (!id) return;
+        const key = normalise(id);
+        if (!idToNames.has(key)) idToNames.set(key, { origId: id, names: new Set() });
+        if (name) idToNames.get(key).names.add(name);
+      });
+      idToNames.forEach(({ origId, names }) => {
+        if (names.size > 1) {
+          issues.push({
+            type: 'Same ID → Multiple Names',
+            badgeClass: 'badge-dup-id',
+            value: origId,
+            detail: [...names].join(' | ')
+          });
+        }
+      });
+
+      // 2. Same User name* with multiple different User ID*
+      const nameToIds = new Map();
+      rows.forEach(row => {
+        const id   = String(row[colMap.userId]   ?? '').trim();
+        const name = String(row[colMap.userName] ?? '').trim();
+        if (!name) return;
+        const key = normalise(name);
+        if (!nameToIds.has(key)) nameToIds.set(key, { origName: name, ids: new Set() });
+        if (id) nameToIds.get(key).ids.add(id);
+      });
+      nameToIds.forEach(({ origName, ids }) => {
+        if (ids.size > 1) {
+          issues.push({
+            type: 'Same Name → Multiple IDs',
+            badgeClass: 'badge-dup-name',
+            value: origName,
+            detail: [...ids].join(' | ')
+          });
+        }
+      });
+
+      // 3. Duplicate entries in Uploaded User ID column
+      const uploadedCounts = new Map();
+      rows.forEach(row => {
+        const uid = String(row[colMap.uploadedUserId] ?? '').trim();
+        if (!uid) return;
+        const key = normalise(uid);
+        uploadedCounts.set(key, (uploadedCounts.get(key) || { orig: uid, count: 0 }));
+        uploadedCounts.get(key).count++;
+      });
+      uploadedCounts.forEach(({ orig, count }) => {
+        if (count > 1) {
+          issues.push({
+            type: 'Duplicate in Uploaded ID',
+            badgeClass: 'badge-dup-upload',
+            value: orig,
+            detail: `Appears ${count} times in "Uploaded User ID" column`
+          });
+        }
+      });
+
+      return issues;
+    }
+
+    function showDebug(colMap, rows) {
+      const el = document.getElementById('debug-info');
+      const sample = rows.slice(0, 3);
+      const colInfo = Object.entries(colMap).map(([k, v]) => {
+        const sampleVals = sample.map(r => JSON.stringify(r[v] ?? '')).join(', ');
+        return `<strong>${k}</strong> → "${escHtml(v)}" &nbsp;(sample: ${escHtml(sampleVals)})`;
+      });
+      el.innerHTML = `<strong>🔍 Debug — Columns Detected:</strong><br>${colInfo.join('<br>')}
+        <br><br>Uploaded set size: <strong>${uploadedSet.size}</strong> &nbsp;|
+        Total users: <strong>${allUsers.length}</strong> &nbsp;|
+        Matched (uploaded): <strong>${uploadedList.length}</strong> &nbsp;|
+        Not uploaded: <strong>${notUploadedList.length}</strong>`;
+      el.classList.remove('hidden');
+    }
+
+    // ── Render Results ─────────────────────────────────────────────────────────
+    function renderResults() {
+      // Stats
+      document.getElementById('stats-bar').innerHTML = `
+        <div class="stat-card stat-total">
+          <div class="stat-num">${allUsers.length}</div>
+          <div class="stat-label">Total Unique Users</div>
+        </div>
+        <div class="stat-card stat-uploaded">
+          <div class="stat-num">${uploadedList.length}</div>
+          <div class="stat-label">Uploaded</div>
+        </div>
+        <div class="stat-card stat-not-uploaded">
+          <div class="stat-num">${notUploadedList.length}</div>
+          <div class="stat-label">Not Uploaded</div>
+        </div>
+        <div class="stat-card stat-issues">
+          <div class="stat-num">${issuesList.length}</div>
+          <div class="stat-label">Data Issues</div>
+        </div>`;
+
+      document.getElementById('count-not-uploaded').textContent = `${notUploadedList.length} users`;
+      document.getElementById('count-uploaded').textContent     = `${uploadedList.length} users`;
+
+      renderTable('tbody-not-uploaded', notUploadedList, 'visible-count-not-uploaded');
+      renderTable('tbody-uploaded',     uploadedList,    'visible-count-uploaded');
+      renderIssues(issuesList);
+
+      resultsSection.classList.remove('hidden');
+
+      // Attach search handlers
+      attachSearch('search-not-uploaded', notUploadedList, 'tbody-not-uploaded', 'visible-count-not-uploaded');
+      attachSearch('search-uploaded',     uploadedList,    'tbody-uploaded',     'visible-count-uploaded');
+      attachIssuesSearch();
+
+      // Issues panel toggle
+      const toggle = document.getElementById('issues-toggle');
+      const body   = document.getElementById('issues-body');
+      const chev   = document.getElementById('issues-chevron');
+      // Replace to remove old listeners
+      const newToggle = toggle.cloneNode(true);
+      toggle.parentNode.replaceChild(newToggle, toggle);
+      newToggle.addEventListener('click', () => {
+        body.classList.toggle('open');
+        chev.classList.toggle('open');
+      });
+      // Auto-open if there are issues
+      if (issuesList.length > 0) {
+        body.classList.add('open');
+        document.getElementById('issues-chevron').classList.add('open');
+      }
+    }
+
+    function renderIssues(data) {
+      document.getElementById('issues-count-pill').textContent = data.length;
+      const tbody = document.getElementById('tbody-issues');
+      if (!data.length) {
+        tbody.innerHTML = `<tr><td colspan="4" class="no-data">✅ No data issues found.</td></tr>`;
+        document.getElementById('visible-count-issues').textContent = '';
+        return;
+      }
+      tbody.innerHTML = data.map((issue, i) => `
+        <tr>
+          <td class="serial-col">${i + 1}</td>
+          <td><span class="issue-type-badge ${escHtml(issue.badgeClass)}">${escHtml(issue.type)}</span></td>
+          <td class="issues-value">${escHtml(issue.value)}</td>
+          <td class="issues-detail">${escHtml(issue.detail)}</td>
+        </tr>`).join('');
+      document.getElementById('visible-count-issues').textContent = `Showing ${data.length} issues`;
+    }
+
+    function attachIssuesSearch() {
+      const input = document.getElementById('search-issues');
+      const newInput = input.cloneNode(true);
+      input.parentNode.replaceChild(newInput, input);
+      newInput.addEventListener('input', () => {
+        const q = newInput.value.trim().toLowerCase();
+        const filtered = q ? issuesList.filter(iss =>
+          iss.type.toLowerCase().includes(q) ||
+          iss.value.toLowerCase().includes(q) ||
+          iss.detail.toLowerCase().includes(q)
+        ) : issuesList;
+        renderIssues(filtered);
+        document.getElementById('visible-count-issues').textContent =
+          q ? `Showing ${filtered.length} of ${issuesList.length} issues` : `Showing ${issuesList.length} issues`;
+      });
+    }
+
+    function renderTable(tbodyId, data, countId) {
+      const tbody = document.getElementById(tbodyId);
+      if (!data.length) {
+        tbody.innerHTML = `<tr><td colspan="3" class="no-data">No records found.</td></tr>`;
+        if (countId) document.getElementById(countId).textContent = '';
+        return;
+      }
+      tbody.innerHTML = data.map((u, i) => `
+        <tr>
+          <td class="serial-col">${i + 1}</td>
+          <td>${escHtml(u.id)}</td>
+          <td>${escHtml(u.name)}</td>
+        </tr>`).join('');
+      if (countId) document.getElementById(countId).textContent = `Showing ${data.length} records`;
+    }
+
+    function attachSearch(inputId, fullData, tbodyId, countId) {
+      const input = document.getElementById(inputId);
+      // remove old listener
+      const newInput = input.cloneNode(true);
+      input.parentNode.replaceChild(newInput, input);
+      newInput.addEventListener('input', () => {
+        const q = newInput.value.trim().toLowerCase();
+        const filtered = q ? fullData.filter(u =>
+          u.id.toLowerCase().includes(q) || u.name.toLowerCase().includes(q)
+        ) : fullData;
+        renderTable(tbodyId, filtered, countId);
+        if (countId) document.getElementById(countId).textContent =
+          q ? `Showing ${filtered.length} of ${fullData.length} records` : `Showing ${fullData.length} records`;
+      });
+    }
+
+    // ── Downloads ──────────────────────────────────────────────────────────────
+    document.getElementById('dl-not-uploaded-btn').addEventListener('click', () => {
+      downloadExcel([{ name: 'Not Uploaded', data: notUploadedList }], 'not_uploaded_users.xlsx');
+    });
+    document.getElementById('dl-uploaded-btn').addEventListener('click', () => {
+      downloadExcel([{ name: 'Uploaded', data: uploadedList }], 'uploaded_users.xlsx');
+    });
+    document.getElementById('dl-all-btn').addEventListener('click', () => {
+      downloadExcel([
+        { name: 'Not Uploaded', data: notUploadedList },
+        { name: 'Uploaded',     data: uploadedList }
+      ], 'user_filter_result.xlsx');
+    });
+    document.getElementById('dl-issues-btn').addEventListener('click', () => {
+      const wb = XLSX.utils.book_new();
+      const rows = [['#', 'Issue Type', 'Value', 'Detail'],
+        ...issuesList.map((iss, i) => [i + 1, iss.type, iss.value, iss.detail])];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{ wch: 5 }, { wch: 28 }, { wch: 22 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Data Issues');
+      XLSX.writeFile(wb, 'data_issues.xlsx');
+    });
+
+    function downloadExcel(sheets, filename) {
+      const wb = XLSX.utils.book_new();
+      sheets.forEach(({ name, data }) => {
+        const rows = [['#', 'User ID*', 'User Name*'],
+          ...data.map((u, i) => [i + 1, u.id, u.name])];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        // Column widths
+        ws['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 30 }];
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      });
+      XLSX.writeFile(wb, filename);
+    }
+
+    // ── Reset ──────────────────────────────────────────────────────────────────
+    resetBtn.addEventListener('click', () => {
+      fileInput.value = '';
+      processBtn._file = null;
+      processBtn.disabled = true;
+      fileInfoBar.classList.add('hidden');
+      fileInfoBar.innerHTML = '';
+      resultsSection.classList.add('hidden');
+      document.getElementById('debug-info').classList.add('hidden');
+      document.getElementById('issues-body').classList.remove('open');
+      clearMsg();
+      allUsers = [];
+      uploadedSet.clear();
+      notUploadedList = [];
+      uploadedList = [];
+      issuesList = [];
+    });
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function showMsg(text, type) {
+      uploadMsg.textContent = text;
+      uploadMsg.className = `msg msg-${type === 'error' ? 'error' : 'info'}`;
+      uploadMsg.classList.remove('hidden');
+    }
+    function clearMsg() {
+      uploadMsg.classList.add('hidden');
+      uploadMsg.textContent = '';
+    }
+    function escHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+</body>
+</html>
