@@ -117,6 +117,52 @@
     .issues-detail    { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; }
     .issues-value     { font-weight: 600; font-family: monospace; }
 
+    /* Location Report */
+    .report-panel { background: var(--card); border-radius: 16px; border: 1px solid #bfdbfe; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 1.5rem; }
+    .report-panel-header { padding: 1rem 1.25rem; background: #eff6ff; border-bottom: 1px solid #bfdbfe; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; cursor: pointer; user-select: none; }
+    .report-panel-header:hover { background: #dbeafe; }
+    .report-panel-title { font-size: 1rem; font-weight: 700; color: #1d4ed8; display: flex; align-items: center; gap: 0.5rem; }
+    .report-chevron { font-size: 0.8rem; color: #1d4ed8; transition: transform 0.2s; }
+    .report-chevron.open { transform: rotate(180deg); }
+    .report-body { display: none; }
+    .report-body.open { display: block; }
+    .report-loading { padding: 2rem; text-align: center; color: var(--text-muted); font-style: italic; }
+
+    /* Report table */
+    .report-table-wrap { overflow-x: auto; }
+    .report-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .report-table th { background: #1e3a5f; color: #fff; padding: 0.65rem 0.875rem; text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; border: 1px solid #1e3a5f; }
+    .report-table td { padding: 0.6rem 0.875rem; border: 1px solid var(--border); vertical-align: top; }
+    .report-table tbody tr:hover td { background: #f0f7ff; }
+    .report-table .metro-cell  { font-weight: 700; color: #1d4ed8; background: #eff6ff; }
+    .report-table .dist-cell   { font-weight: 600; color: #374151; background: #f8fafc; }
+    .report-table .ps-cell     { color: var(--text-main); }
+    .id-list { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+    .id-tag-up   { background: #dcfce7; color: #166534; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.78rem; font-weight: 600; font-family: monospace; }
+    .id-tag-no   { background: #fee2e2; color: #991b1b; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.78rem; font-weight: 600; font-family: monospace; }
+    .id-tag-nie  { background: #f3f4f6; color: #4b5563; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.78rem; font-weight: 600; font-family: monospace; }
+    .summary-label { font-size: 0.78rem; font-weight: 700; margin-bottom: 0.2rem; }
+    .summary-label.up  { color: #166534; }
+    .summary-label.no  { color: #991b1b; }
+    .summary-label.nie { color: #4b5563; }
+    .summary-divider   { border: none; border-top: 1px dashed var(--border); margin: 0.5rem 0; }
+    .unmatched-section { padding: 1rem 1.25rem; background: #fffbeb; border-top: 1px solid #fde68a; }
+    .issues-panel-header { padding: 1rem 1.25rem; background: #fff7ed; border-bottom: 1px solid #fed7aa; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+    .issues-panel-header:hover { background: #ffedd5; }
+    .issues-panel-title { font-size: 1rem; font-weight: 700; color: #92400e; display: flex; align-items: center; gap: 0.5rem; }
+    .issues-count-pill { font-size: 0.78rem; font-weight: 700; padding: 0.25rem 0.65rem; border-radius: 20px; background: #fde68a; color: #92400e; }
+    .issues-chevron { font-size: 0.8rem; color: #92400e; transition: transform 0.2s; }
+    .issues-chevron.open { transform: rotate(180deg); }
+    .issues-body { display: none; }
+    .issues-body.open { display: block; }
+    .stat-issues .stat-num { color: var(--warning); }
+    .issue-type-badge { display: inline-block; padding: 0.18rem 0.55rem; border-radius: 5px; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+    .badge-dup-id     { background: #fef3c7; color: #92400e; }
+    .badge-dup-name   { background: #ede9fe; color: #5b21b6; }
+    .badge-dup-upload { background: #fee2e2; color: #991b1b; }
+    .issues-detail    { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; }
+    .issues-value     { font-weight: 600; font-family: monospace; }
+
     .hidden { display: none !important; }
   </style>
 </head>
@@ -163,6 +209,22 @@
           <button class="btn btn-success btn-sm" id="dl-all-btn">⬇ Download Both Lists (Excel)</button>
           <button class="btn btn-outline btn-sm" id="dl-not-uploaded-btn">⬇ Not Uploaded List</button>
           <button class="btn btn-outline btn-sm" id="dl-uploaded-btn">⬇ Uploaded List</button>
+        </div>
+      </div>
+
+      <!-- Location Report Panel -->
+      <div class="report-panel" id="report-panel">
+        <div class="report-panel-header" id="report-toggle">
+          <span class="report-panel-title">📋 Location-wise Upload Status Report</span>
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <button class="btn btn-primary btn-sm" id="gen-report-btn">Generate Report</button>
+            <button class="btn btn-success btn-sm hidden" id="dl-report-btn">⬇ Download Excel</button>
+            <span class="report-chevron" id="report-chevron">▼</span>
+          </div>
+        </div>
+        <div class="report-body" id="report-body">
+          <div class="report-loading hidden" id="report-loading">⏳ Building report…</div>
+          <div id="report-content"></div>
         </div>
       </div>
 
@@ -380,7 +442,7 @@
       rows.forEach(row => {
         const id   = String(row[colMap.userId]   ?? '').trim();
         const name = String(row[colMap.userName] ?? '').trim();
-        if (!id) return;
+        if (!id || /^\d+$/.test(id)) return; // skip empty or purely numeric IDs
         const key = normalise(id);
         if (!seen.has(key)) {
           seen.add(key);
@@ -671,6 +733,161 @@
       XLSX.writeFile(wb, filename);
     }
 
+    // ── Location Report ─────────────────────────────────────────────────────
+    let reportData = null; // { report, unmatched }
+
+    // Toggle collapse
+    document.getElementById('report-toggle').addEventListener('click', (e) => {
+      // Don't toggle when clicking buttons inside header
+      if (e.target.closest('button')) return;
+      document.getElementById('report-body').classList.toggle('open');
+      document.getElementById('report-chevron').classList.toggle('open');
+    });
+
+    document.getElementById('gen-report-btn').addEventListener('click', async () => {
+      if (!allUsers.length) return;
+      const btn = document.getElementById('gen-report-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Loading…';
+      document.getElementById('report-loading').classList.remove('hidden');
+      document.getElementById('report-content').innerHTML = '';
+      document.getElementById('report-body').classList.add('open');
+      document.getElementById('report-chevron').classList.add('open');
+
+      try {
+        const payload = allUsers.map(u => ({ id: u.id, name: u.name, uploaded: isInUploadedSet(u) }));
+        const res = await fetch('/api/user-location-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ users: payload })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Failed to generate report.');
+        reportData = data;
+        renderReport(data);
+        document.getElementById('dl-report-btn').classList.remove('hidden');
+      } catch (err) {
+        document.getElementById('report-content').innerHTML =
+          `<div style="padding:1rem;color:#991b1b;">Error: ${escHtml(err.message)}</div>`;
+      } finally {
+        document.getElementById('report-loading').classList.add('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Generate Report';
+      }
+    });
+
+    document.getElementById('dl-report-btn').addEventListener('click', async () => {
+      if (!reportData) return;
+      const btn = document.getElementById('dl-report-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Generating…';
+      try {
+        const res = await fetch('/api/user-location-report-excel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reportData)
+        });
+        if (!res.ok) throw new Error('Download failed.');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `User-Upload-Status-${new Date().toISOString().split('T')[0]}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Download failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇ Download Excel';
+      }
+    });
+
+    function renderReport(data) {
+      const { report, unmatched } = data;
+      if (!report.length && !unmatched.uploaded.length && !unmatched.notUploaded.length) {
+        document.getElementById('report-content').innerHTML =
+          '<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-style:italic;">No location data found for any user. Check that the bangla index files are loaded.</div>';
+        return;
+      }
+
+      // Group for display: track metro/district spans
+      let html = `<div class="report-table-wrap"><table class="report-table"><thead><tr>
+        <th>Metro / Range</th><th>District</th><th>Police Station</th>
+        <th style="min-width:300px;">Upload Summary</th>
+      </tr></thead><tbody>`;
+
+      let lastMetro = null;
+      let lastDist  = null;
+
+      // Pre-compute spans
+      const metroSpans = {};
+      const distSpans  = {};
+      report.forEach(r => {
+        metroSpans[r.metro] = (metroSpans[r.metro] || 0) + 1;
+        const dk = r.metro + '|' + r.district;
+        distSpans[dk] = (distSpans[dk] || 0) + 1;
+      });
+      const metroSeen = {};
+      const distSeen  = {};
+
+      report.forEach(row => {
+        const dk = row.metro + '|' + row.district;
+
+        let metroTd = '';
+        if (!metroSeen[row.metro]) {
+          metroSeen[row.metro] = true;
+          metroTd = `<td class="metro-cell" rowspan="${metroSpans[row.metro]}">${escHtml(row.metro)}</td>`;
+        }
+        let distTd = '';
+        if (!distSeen[dk]) {
+          distSeen[dk] = true;
+          distTd = `<td class="dist-cell" rowspan="${distSpans[dk]}">${escHtml(row.district)}</td>`;
+        }
+
+        const upTags  = row.uploadedIds.map(id =>
+          `<span class="id-tag-up">${escHtml(id)}</span>`).join('');
+        const noTags  = row.notUploadedIds.map(id =>
+          `<span class="id-tag-no">${escHtml(id)}</span>`).join('');
+        const nieTags = (row.notInExcelIds || []).map(id =>
+          `<span class="id-tag-nie">${escHtml(id)}</span>`).join('');
+
+        html += `<tr>
+          ${metroTd}
+          ${distTd}
+          <td class="ps-cell">${escHtml(row.policeStation)}</td>
+          <td>
+            <div class="summary-label up">✅ Uploaded (${row.uploadedCount})</div>
+            <div class="id-list">${upTags || '<span style="color:var(--text-muted);font-size:0.8rem;">—</span>'}</div>
+            <hr class="summary-divider">
+            <div class="summary-label no">❌ Not Uploaded (${row.notUploadedCount})</div>
+            <div class="id-list">${noTags || '<span style="color:var(--text-muted);font-size:0.8rem;">—</span>'}</div>
+            <hr class="summary-divider">
+            <div class="summary-label nie">⬜ Not In Excel (${row.notInExcelCount || 0})</div>
+            <div class="id-list">${nieTags || '<span style="color:var(--text-muted);font-size:0.8rem;">—</span>'}</div>
+          </td>
+        </tr>`;
+      });
+
+      html += '</tbody></table></div>';
+
+      // Unmatched section
+      const totalUnmatched = unmatched.uploaded.length + unmatched.notUploaded.length;
+      if (totalUnmatched > 0) {
+        const upTags = unmatched.uploaded.map(id => `<span class="id-tag-up">${escHtml(id)}</span>`).join('');
+        const noTags = unmatched.notUploaded.map(id => `<span class="id-tag-no">${escHtml(id)}</span>`).join('');
+        html += `<div class="unmatched-section">
+          <div style="font-weight:700;color:#92400e;margin-bottom:0.5rem;">⚠️ Unmatched User IDs (${totalUnmatched}) — not found in location index</div>
+          <div class="summary-label up">✅ Uploaded (${unmatched.uploaded.length})</div>
+          <div class="id-list" style="margin-bottom:0.5rem;">${upTags || '—'}</div>
+          <div class="summary-label no">❌ Not Uploaded (${unmatched.notUploaded.length})</div>
+          <div class="id-list">${noTags || '—'}</div>
+        </div>`;
+      }
+
+      document.getElementById('report-content').innerHTML = html;
+    }
+
     // ── Reset ──────────────────────────────────────────────────────────────────
     resetBtn.addEventListener('click', () => {
       fileInput.value = '';
@@ -681,12 +898,17 @@
       resultsSection.classList.add('hidden');
       document.getElementById('debug-info').classList.add('hidden');
       document.getElementById('issues-body').classList.remove('open');
+      document.getElementById('report-body').classList.remove('open');
+      document.getElementById('report-chevron').classList.remove('open');
+      document.getElementById('report-content').innerHTML = '';
+      document.getElementById('dl-report-btn').classList.add('hidden');
       clearMsg();
       allUsers = [];
       uploadedSet.clear();
       notUploadedList = [];
       uploadedList = [];
       issuesList = [];
+      reportData = null;
     });
 
     // ── Helpers ────────────────────────────────────────────────────────────────

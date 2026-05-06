@@ -1028,6 +1028,295 @@ app.post('/api/device-scan-duplicate-userids-excel', (req, res) => {
 });
 
 // ============================================================
+// START: User Location Report Feature
+// ============================================================
+
+// POST /api/user-location-report
+// Accepts { users: [{id, uploaded}] }
+// Returns grouped data: Metro/Range → District → Police Station → { uploadedIds, notUploadedIds }
+app.post('/api/user-location-report', (req, res) => {
+  const { users } = req.body || {};
+  if (!Array.isArray(users) || !users.length) {
+    return res.status(400).json({ success: false, message: 'No user data provided.' });
+  }
+
+  // ── Build bangla lookup structures ─────────────────────────────────────────
+  const idIndex     = new Map(); // ID         → { metro, district, policeStation }
+  const cameraIndex = new Map(); // Camera Name → { metro, district, policeStation }
+
+  const banglaFiles = deviceSearch_getAllExcelFiles(DEVICE_BANGLA_DIR);
+  for (const filePath of banglaFiles) {
+    let rows;
+    try { rows = deviceSearch_parseExcelFile(filePath); } catch (e) { continue; }
+    for (const row of rows) {
+      const meta = {
+        metro:        row['Metro/Range'] || row['Metro'] || '',
+        district:     row['District']    || '',
+        policeStation: row['Police Station'] || ''
+      };
+      const id  = row['ID'] || '';
+      const cam = row['Camera Name'] || row['Final_Code'] || '';
+      if (id  && !idIndex.has(id))       idIndex.set(id, meta);
+      if (cam && !cameraIndex.has(cam))  cameraIndex.set(cam, meta);
+    }
+  }
+
+  // ── Build prefix index: "PREFIX-ORG" → first matching meta ─────────────────
+  // e.g. "CHT-SAT" → meta from first Camera Name starting with "CHT-SAT-"
+  const prefixIndex = new Map();
+  cameraIndex.forEach((meta, cam) => {
+    const parts = cam.split('-');
+    if (parts.length >= 2) {
+      const prefix = parts[0] + '-' + parts[1]; // e.g. "CHT-SAT"
+      if (!prefixIndex.has(prefix)) prefixIndex.set(prefix, meta);
+    }
+  });
+
+  // ── Resolve each user via 3-layer lookup ───────────────────────────────────
+  function resolveMeta(id, name) {
+    // Layer 1: direct ID match in bangla
+    if (idIndex.has(id)) return idIndex.get(id);
+
+    // Layer 2: User name* exact match against Camera Name
+    if (name && cameraIndex.has(name)) return cameraIndex.get(name);
+
+    // Layer 3: User name* prefix match (e.g. "CHT-SAT-NCK" → prefix "CHT-SAT")
+    if (name) {
+      const parts = name.split('-');
+      if (parts.length >= 2) {
+        const prefix = parts[0] + '-' + parts[1];
+        if (prefixIndex.has(prefix)) return prefixIndex.get(prefix);
+      }
+    }
+
+    return null;
+  }
+
+  // ── Group by Metro/Range → District → Police Station ──────────────────────
+  const grouped      = new Map();
+  const unmatched    = { uploaded: [], notUploaded: [] };
+  const submittedIds   = new Set(users.map(u => u.id));
+  // User ID* may be numeric — also track by User name* (camera-style) to match
+  // alphanumeric User IDs in file/user/ (e.g. SMAIA1 matches via SMP-AIR-AGS1 name)
+  const submittedNames = new Set(users.map(u => u.name).filter(Boolean));
+
+  function addToBucket(metro, dist, ps, field, id) {
+    if (!grouped.has(metro)) grouped.set(metro, new Map());
+    const metroMap = grouped.get(metro);
+    if (!metroMap.has(dist)) metroMap.set(dist, new Map());
+    const distMap = metroMap.get(dist);
+    if (!distMap.has(ps)) distMap.set(ps, { uploaded: [], notUploaded: [], notInExcel: [] });
+    distMap.get(ps)[field].push(id);
+  }
+
+  for (const { id, name, uploaded } of users) {
+    const meta = resolveMeta(id, name || '');
+    if (!meta || (!meta.metro && !meta.district && !meta.policeStation)) {
+      if (uploaded) unmatched.uploaded.push(id);
+      else          unmatched.notUploaded.push(id);
+      continue;
+    }
+    const metro = meta.metro         || '(Unknown Range)';
+    const dist  = meta.district      || '(Unknown District)';
+    const ps    = meta.policeStation || '(Unknown Police Station)';
+    addToBucket(metro, dist, ps, uploaded ? 'uploaded' : 'notUploaded', id);
+  }
+
+  // ── Add "Not In Excel" IDs from file/user/ that aren't in the submitted set ─
+  const userFiles2 = deviceSearch_getAllExcelFiles(DEVICE_USER_DIR);
+  const seenNotInExcel = new Set(); // avoid duplicates across files
+  for (const filePath of userFiles2) {
+    let rows;
+    try { rows = deviceSearch_parseExcelFile(filePath); } catch (e) { continue; }
+    for (const row of rows) {
+      const userId   = String(row['User ID']   || '').trim();
+      const userName = String(row['User name'] || '').trim();
+      if (!userId || submittedIds.has(userId) || submittedNames.has(userName) || seenNotInExcel.has(userId)) continue;
+      seenNotInExcel.add(userId);
+      const meta = resolveMeta(userId, userName);
+      if (!meta || (!meta.metro && !meta.district && !meta.policeStation)) continue;
+      const metro = meta.metro         || '(Unknown Range)';
+      const dist  = meta.district      || '(Unknown District)';
+      const ps    = meta.policeStation || '(Unknown Police Station)';
+      addToBucket(metro, dist, ps, 'notInExcel', userId);
+    }
+  }
+
+  // ── Serialise ──────────────────────────────────────────────────────────────
+  const report = [];
+  grouped.forEach((metroMap, metro) => {
+    metroMap.forEach((distMap, district) => {
+      distMap.forEach((bucket, policeStation) => {
+        bucket.uploaded.sort();
+        bucket.notUploaded.sort();
+        bucket.notInExcel.sort();
+        report.push({
+          metro,
+          district,
+          policeStation,
+          uploadedIds:      bucket.uploaded,
+          notUploadedIds:   bucket.notUploaded,
+          notInExcelIds:    bucket.notInExcel,
+          uploadedCount:    bucket.uploaded.length,
+          notUploadedCount: bucket.notUploaded.length,
+          notInExcelCount:  bucket.notInExcel.length
+        });
+      });
+    });
+  });
+
+  report.sort((a, b) =>
+    a.metro.localeCompare(b.metro) ||
+    a.district.localeCompare(b.district) ||
+    a.policeStation.localeCompare(b.policeStation)
+  );
+
+  res.json({ success: true, report, unmatched });
+});
+
+// POST /api/user-location-report-excel
+// Accepts { report, unmatched } (same structure returned by /api/user-location-report)
+// Returns an xlsx file matching the screenshot format
+app.post('/api/user-location-report-excel', (req, res) => {
+  const { report, unmatched } = req.body || {};
+  if (!report || !report.length) {
+    return res.status(400).json({ success: false, message: 'No report data provided.' });
+  }
+
+  const wb   = XLSX.utils.book_new();
+  const ws   = {};
+  const thin = { style: 'thin', color: { rgb: '000000' } };
+  const bord = { top: thin, bottom: thin, left: thin, right: thin };
+  const merges = [];
+  const NUM_COLS = 4;
+  let R = 0;
+
+  function sc(r, c, v, s) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    ws[addr] = { v, s: s || {}, t: typeof v === 'number' ? 'n' : 's' };
+  }
+
+  const hdrStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFF' } },
+    fill: { fgColor: { rgb: '1E3A5F' } },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: bord
+  };
+  const subHdrStyle = {
+    font: { bold: true },
+    fill: { fgColor: { rgb: 'D9E1F2' } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: bord
+  };
+  const labelStyle = { font: { bold: true }, alignment: { vertical: 'center' }, border: bord };
+  const cellStyle  = { alignment: { vertical: 'top', wrapText: true }, border: bord };
+  const numStyle   = { alignment: { horizontal: 'center', vertical: 'center' }, border: bord };
+
+  function mergeRow(r, text, style) {
+    sc(r, 0, text, style);
+    for (let c = 1; c < NUM_COLS; c++) sc(r, c, '', style);
+    merges.push({ s: { r, c: 0 }, e: { r, c: NUM_COLS - 1 } });
+  }
+
+  // ── Title ────────────────────────────────────────────────────────────────
+  mergeRow(R, 'USER UPLOAD STATUS REPORT', hdrStyle); R++;
+  mergeRow(R, `Generated: ${new Date().toLocaleString()}`, {
+    alignment: { horizontal: 'center' }, border: bord
+  }); R++;
+  // Blank
+  mergeRow(R, '', {}); R++;
+
+  // ── Column headers ────────────────────────────────────────────────────────
+  ['Metro/Range', 'District', 'Police Station', 'Upload Summary'].forEach((h, c) => sc(R, c, h, hdrStyle));
+  R++;
+
+  // Group rows by metro for merged cells
+  // We need to compute spans first
+  const metroSpans   = new Map(); // metro → count of PS rows
+  const distSpans    = new Map(); // "metro|dist" → count of PS rows
+  report.forEach(row => {
+    metroSpans.set(row.metro, (metroSpans.get(row.metro) || 0) + 1);
+    const dk = `${row.metro}|${row.district}`;
+    distSpans.set(dk, (distSpans.get(dk) || 0) + 1);
+  });
+
+  // Track start rows for merging
+  const metroStart = new Map();
+  const distStart  = new Map();
+
+  report.forEach((row, idx) => {
+    const startR = R;
+    const dk = `${row.metro}|${row.district}`;
+
+    if (!metroStart.has(row.metro)) metroStart.set(row.metro, R);
+    if (!distStart.has(dk))         distStart.set(dk, R);
+
+    const upText  = row.uploadedIds.join(', ')                 || '-';
+    const notText = row.notUploadedIds.join(', ')              || '-';
+    const nieText = (row.notInExcelIds || []).join(', ')        || '-';
+    const summary = `✅ Uploaded (${row.uploadedCount}): ${upText}\n\n❌ Not Uploaded (${row.notUploadedCount}): ${notText}\n\n⬜ Not In Excel (${row.notInExcelCount || 0}): ${nieText}`;
+
+    // Metro/Range cell — will be merged after loop
+    sc(R, 0, row.metro,        labelStyle);
+    sc(R, 1, row.district,     labelStyle);
+    sc(R, 2, row.policeStation, { alignment: { vertical: 'center' }, border: bord });
+    sc(R, 3, summary, { ...cellStyle, alignment: { vertical: 'top', wrapText: true }, border: bord });
+    R++;
+  });
+
+  // Apply merges for metro and district spans
+  report.forEach(row => {
+    const dk = `${row.metro}|${row.district}`;
+    // Metro merge
+    if (metroSpans.get(row.metro) > 1 && metroStart.has(row.metro)) {
+      const s = metroStart.get(row.metro);
+      const span = metroSpans.get(row.metro);
+      if (span > 1) merges.push({ s: { r: s, c: 0 }, e: { r: s + span - 1, c: 0 } });
+      metroStart.delete(row.metro); // only add once
+    }
+    // District merge
+    if (distSpans.get(dk) > 1 && distStart.has(dk)) {
+      const s = distStart.get(dk);
+      const span = distSpans.get(dk);
+      if (span > 1) merges.push({ s: { r: s, c: 1 }, e: { r: s + span - 1, c: 1 } });
+      distStart.delete(dk);
+    }
+  });
+
+  // ── Unmatched section (IDs not found in bangla index) ────────────────────
+  if ((unmatched.uploaded.length + unmatched.notUploaded.length) > 0) {
+    mergeRow(R, '', {}); R++;
+    mergeRow(R, 'UNMATCHED USER IDs (not found in location index)', {
+      font: { bold: true }, fill: { fgColor: { rgb: 'FFF3CD' } },
+      alignment: { horizontal: 'center' }, border: bord
+    }); R++;
+    const um = `✅ Uploaded (${unmatched.uploaded.length}): ${unmatched.uploaded.join(', ') || '-'}\n\n❌ Not Uploaded (${unmatched.notUploaded.length}): ${unmatched.notUploaded.join(', ') || '-'}`;
+    sc(R, 0, um, cellStyle);
+    for (let c = 1; c < NUM_COLS; c++) sc(R, c, '', cellStyle);
+    merges.push({ s: { r: R, c: 0 }, e: { r: R, c: NUM_COLS - 1 } });
+    R++;
+  }
+
+  ws['!ref']    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: NUM_COLS - 1 } });
+  ws['!merges'] = merges;
+  ws['!cols']   = [{ wch: 20 }, { wch: 22 }, { wch: 24 }, { wch: 80 }];
+  ws['!rows']   = Array.from({ length: R }, (_, i) => i >= 4 ? { hpt: 60 } : { hpt: 20 });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Upload Status Report');
+  const buffer   = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const dateStr  = new Date().toISOString().split('T')[0];
+  const filename = `User-Upload-Status-${dateStr}.xlsx`;
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
+});
+
+// ============================================================
+// END: User Location Report Feature
+// ============================================================
+
+// ============================================================
 // END: Device IP Search Feature
 // ============================================================
 
